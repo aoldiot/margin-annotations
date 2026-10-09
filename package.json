@@ -1,0 +1,20 @@
+{
+  "name": "margin-annotations",
+  "version": "0.3.0",
+  "description": "Obsidian plugin: Word-style inline annotations stored as <span> markers in the markdown source, readable by AI agents.",
+  "main": "main.js",
+  "scripts": {
+    "build": "tsc --noEmit && node esbuild.config.mjs",
+    "dev": "node esbuild.config.mjs --watch",
+    "test": "node --experimental-strip-types --test test/*.test.ts"
+  },
+  "devDependencies": {
+    "@codemirror/state": "6.5.0",
+    "@codemirror/view": "6.38.6",
+    "@types/node": "^20.11.0",
+    "esbuild": "^0.21.5",
+    "obsidian": "latest",
+    "typescript": "^5.4.0"
+  },
+  "license": "MIT"
+}

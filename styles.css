@@ -1,0 +1,325 @@
+/* ---- 颜色(RGB 三元组,供 rgba() 使用) ---- */
+body {
+  --ann-rgb-yellow: 255, 208, 0;
+  --ann-rgb-green: 62, 192, 106;
+  --ann-rgb-blue: 74, 158, 255;
+  --ann-rgb-pink: 255, 111, 165;
+  --ann-rgb-purple: 166, 124, 255;
+  --ann-rgb-orange: 255, 138, 61;
+}
+
+/* ---- 高亮:阅读模式(.ann-hl)与编辑模式(.ann-text) ---- */
+.ann-hl,
+.cm-line .ann-text {
+  color: inherit;
+  --ann-rgb: var(--ann-rgb-yellow);
+  background-color: rgba(var(--ann-rgb), 0.32);
+  border-bottom: 2px solid rgba(var(--ann-rgb), 0.85);
+}
+.ann-hl[data-color="green"],  .cm-line .ann-c-green  { --ann-rgb: var(--ann-rgb-green); }
+.ann-hl[data-color="blue"],   .cm-line .ann-c-blue   { --ann-rgb: var(--ann-rgb-blue); }
+.ann-hl[data-color="pink"],   .cm-line .ann-c-pink   { --ann-rgb: var(--ann-rgb-pink); }
+.ann-hl[data-color="purple"], .cm-line .ann-c-purple { --ann-rgb: var(--ann-rgb-purple); }
+.ann-hl[data-color="orange"], .cm-line .ann-c-orange { --ann-rgb: var(--ann-rgb-orange); }
+
+/* 编辑/源码模式下的原始标记:淡化,不干扰阅读 */
+.cm-line .ann-tag {
+  opacity: 0.3;
+  font-size: 0.75em;
+}
+
+/* ---- 阅读模式:💬 按钮 ---- */
+.ann-btn {
+  cursor: pointer;
+  font-size: 0.8em;
+  margin: 0 2px;
+  user-select: none;
+  opacity: 0.8;
+}
+.ann-btn:hover {
+  opacity: 1;
+}
+span.ann-s {
+  display: none;
+}
+
+/* ---- 弹层 ---- */
+.ann-popover {
+  position: fixed;
+  z-index: var(--layer-popover, 50);
+  max-width: min(360px, calc(100vw - 16px));
+  padding: 8px 12px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-left: 4px solid var(--ann-pop-color, var(--interactive-accent));
+  border-radius: var(--radius-m, 8px);
+  box-shadow: var(--shadow-s);
+  font-size: var(--font-ui-small, 13px);
+}
+.ann-popover-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+.ann-popover-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  justify-content: flex-end;
+}
+.ann-popover-actions button {
+  font-size: var(--font-ui-smaller, 12px);
+  padding: 2px 10px;
+  height: auto;
+}
+
+/* ---- 输入对话框 ---- */
+.ann-modal-input {
+  width: 100%;
+  resize: vertical;
+  margin-bottom: 12px;
+}
+.ann-color-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.ann-color-label {
+  color: var(--text-muted);
+}
+.ann-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--ann-swatch);
+  cursor: pointer;
+  box-sizing: border-box;
+  border: 2px solid transparent;
+}
+.ann-swatch.is-selected {
+  border-color: var(--text-normal);
+}
+
+/* ---- 已解决 / 当前选中 ---- */
+.ann-hl.is-resolved,
+.cm-line .ann-text.ann-resolved {
+  background-color: rgba(var(--ann-rgb), 0.12);
+  border-bottom-color: rgba(var(--ann-rgb), 0.3);
+}
+.ann-hl.is-active {
+  background-color: rgba(var(--ann-rgb), 0.5);
+}
+
+/* ---- 右侧批注栏(随正文滚动) ---- */
+.ann-side-view {
+  padding: 0 !important;
+  position: relative;
+  overflow: hidden;
+}
+.ann-margin {
+  position: absolute;
+  inset: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.ann-track {
+  position: relative;
+  min-height: 100%;
+  padding: 10px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ann-follow .ann-track {
+  display: block;
+  padding: 0;
+}
+.ann-hotkey-label {
+  margin-right: 8px;
+  padding: 2px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  font-family: var(--font-monospace);
+}
+.ann-empty {
+  padding: 16px 14px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small, 13px);
+  line-height: 1.6;
+}
+.ann-follow .ann-card {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: 0;
+  will-change: transform;
+}
+.ann-card {
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-left: 3px solid var(--ann-card-color, var(--interactive-accent));
+  border-radius: var(--radius-m, 8px);
+  background: var(--background-primary);
+  font-size: var(--font-ui-small, 13px);
+  cursor: pointer;
+  transition: box-shadow 0.12s ease;
+}
+.ann-card.is-hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+.ann-card.is-active {
+  box-shadow: var(--shadow-s);
+  border-color: var(--ann-card-color, var(--interactive-accent));
+}
+.ann-card.is-resolved:not(.is-active) {
+  opacity: 0.6;
+}
+.ann-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ann-avatar {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 12px;
+  font-weight: var(--font-semibold, 600);
+}
+.ann-card-meta {
+  flex: 1;
+  min-width: 0;
+}
+.ann-author {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: var(--font-semibold, 600);
+  color: var(--text-normal);
+}
+.ann-badge {
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: normal;
+}
+.ann-time {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+.ann-more {
+  margin-left: auto;
+}
+.ann-card-quote {
+  margin-top: 6px;
+  padding-left: 6px;
+  border-left: 2px solid var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: 12px;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ann-card-note {
+  margin-top: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+.ann-card-edit {
+  width: 100%;
+  margin-top: 6px;
+  resize: vertical;
+}
+.ann-card-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+.ann-card-actions button {
+  height: auto;
+  padding: 2px 10px;
+  font-size: 12px;
+}
+.ann-replies {
+  margin-top: 8px;
+  padding-left: 10px;
+  border-left: 2px solid var(--background-modifier-border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ann-reply-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ann-reply-head .ann-author {
+  font-weight: normal;
+  color: var(--text-muted);
+}
+.ann-reply-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+.ann-reply-del {
+  margin-left: auto;
+  visibility: hidden;
+}
+.ann-reply:hover .ann-reply-del {
+  visibility: visible;
+}
+.ann-reply-box {
+  display: none;
+  gap: 6px;
+  margin-top: 8px;
+  align-items: flex-end;
+}
+.ann-card.is-active:not(.is-draft) .ann-reply-box {
+  display: flex;
+}
+.ann-reply-input {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  field-sizing: content;
+  max-height: 120px;
+}
+.ann-reply-box button {
+  height: auto;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.ann-card .ann-color-row {
+  margin: 8px 0 0;
+}
+.ann-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  height: auto;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+}
+.ann-icon-btn:hover {
+  color: var(--text-normal);
+}
+
+.ann-margin:focus { outline: none; }
