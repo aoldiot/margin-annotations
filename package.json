@@ -1,6 +1,6 @@
 {
   "name": "margin-annotations",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Obsidian plugin: Word-style inline annotations stored as <span> markers in the markdown source, readable by AI agents.",
   "main": "main.js",
   "scripts": {

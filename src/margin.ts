@@ -123,7 +123,7 @@ export class MarginPanel {
     this.draftCleanup?.();
     this.unlisten();
     this.ro.disconnect();
-    cancelAnimationFrame(this.raf);
+    window.cancelAnimationFrame(this.raf);
     this.el.remove();
   }
 
@@ -293,7 +293,7 @@ export class MarginPanel {
   private renderHead(card: HTMLElement, author: string, time: string, color: string) {
     const head = card.createDiv({ cls: "ann-card-head" });
     const av = head.createDiv({ cls: "ann-avatar", text: (author || "我").slice(0, 1) });
-    av.style.background = colorCss(color);
+    av.setCssProps({ background: colorCss(color) });
     const meta = head.createDiv({ cls: "ann-card-meta" });
     const name = meta.createDiv({ cls: "ann-author" });
     name.createSpan({ text: author || "批注" });
@@ -303,7 +303,7 @@ export class MarginPanel {
 
   private renderDraft(d: Draft): HTMLElement {
     const card = this.track.createDiv({ cls: "ann-card is-draft is-active" });
-    card.style.setProperty("--ann-card-color", colorCss(d.color));
+    card.setCssProps({ "--ann-card-color": colorCss(d.color) });
     this.renderHead(card, this.plugin.author(), nowStamp(), d.color);
     card.createDiv({ cls: "ann-card-quote", text: d.text.replace(/\s+/g, " ").trim().slice(0, 60) });
 
@@ -312,14 +312,14 @@ export class MarginPanel {
     const swatches: HTMLElement[] = [];
     for (const c of COLORS) {
       const sw = row.createSpan({ cls: "ann-swatch" });
-      sw.style.setProperty("--ann-swatch", c.css);
+      sw.setCssProps({ "--ann-swatch": c.css });
       sw.setAttribute("aria-label", c.label);
       sw.toggleClass("is-selected", c.key === d.color);
       sw.addEventListener("click", () => {
         d.color = c.key;
         swatches.forEach((s) => s.removeClass("is-selected"));
         sw.addClass("is-selected");
-        card.style.setProperty("--ann-card-color", c.css);
+        card.setCssProps({ "--ann-card-color": c.css });
       });
       swatches.push(sw);
     }
@@ -351,7 +351,7 @@ export class MarginPanel {
     card.toggleClass("is-resolved", a.resolved);
     card.toggleClass("is-active", a.id === this.activeId);
     card.dataset.id = a.id;
-    card.style.setProperty("--ann-card-color", colorCss(a.color));
+    card.setCssProps({ "--ann-card-color": colorCss(a.color) });
     card.addEventListener("click", () => {
       this.setActive(a.id);
       if (!this.follow) this.reveal(a);
@@ -383,10 +383,12 @@ export class MarginPanel {
         void this.refresh(true);
       };
       cancel.addEventListener("click", finish);
-      save.addEventListener("click", async () => {
+      save.addEventListener("click", () => {
         const note = area.value.trim();
-        if (note) await plugin.updateAnnotation(file, a.id, { note });
-        finish();
+        void (async () => {
+          if (note) await plugin.updateAnnotation(file, a.id, { note });
+          finish();
+        })();
       });
       area.addEventListener("keydown", (e) => {
         if (e.isComposing) return;
@@ -406,10 +408,11 @@ export class MarginPanel {
         top.createSpan({ cls: "ann-time", text: r.time || `约 ${nowStamp(new Date(file.stat.mtime))}` });
         const del = top.createEl("button", { cls: "ann-icon-btn ann-reply-del", attr: { "aria-label": "删除答复" } });
         setIcon(del, "x");
-        del.addEventListener("click", async (e) => {
+        del.addEventListener("click", (e) => {
           e.stopPropagation();
-          await plugin.updateAnnotation(file, a.id, (cur) => ({ replies: cur.replies.filter((_, j) => j !== i) }));
-          void this.refresh(true);
+          void plugin
+            .updateAnnotation(file, a.id, (cur) => ({ replies: cur.replies.filter((_, j) => j !== i) }))
+            .then(() => this.refresh(true));
         });
         item.createDiv({ cls: "ann-reply-text", text: r.text });
       });
@@ -490,7 +493,7 @@ export class MarginPanel {
 
   schedule() {
     if (this.raf) return;
-    this.raf = requestAnimationFrame(() => {
+    this.raf = window.requestAnimationFrame(() => {
       this.raf = 0;
       this.layout();
     });
@@ -530,10 +533,10 @@ export class MarginPanel {
     if (!this.view) return;
     if (!this.follow) {
       this.cards.forEach((c) => {
-        c.style.transform = "";
+        c.setCssProps({ transform: "" });
         c.removeClass("is-hidden");
       });
-      this.track.style.minHeight = "";
+      this.track.setCssProps({ "min-height": "" });
       return;
     }
     const panelTop = this.el.getBoundingClientRect().top;
@@ -574,10 +577,10 @@ export class MarginPanel {
     }
     let bottom = 0;
     for (const e of entries) {
-      e.el.style.transform = `translateY(${Math.round(e.top)}px)`;
+      e.el.setCssProps({ transform: `translateY(${Math.round(e.top)}px)` });
       bottom = Math.max(bottom, e.top + e.h);
     }
-    this.track.style.minHeight = `${Math.ceil(bottom) + 24}px`;
+    this.track.setCssProps({ "min-height": `${Math.ceil(bottom) + 24}px` });
 
     this.syncReadingHighlights();
   }

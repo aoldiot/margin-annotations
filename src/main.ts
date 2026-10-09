@@ -82,7 +82,7 @@ class NoteModal extends Modal {
     const swatches: HTMLElement[] = [];
     for (const c of COLORS) {
       const sw = row.createSpan({ cls: "ann-swatch" });
-      sw.style.setProperty("--ann-swatch", c.css);
+      sw.setCssProps({ "--ann-swatch": c.css });
       sw.setAttribute("aria-label", c.label);
       sw.toggleClass("is-selected", c.key === this.color);
       sw.addEventListener("click", () => {
@@ -162,7 +162,7 @@ export default class InlineAnnotationsPlugin extends Plugin {
   margin = new MarginManager(this);
 
   async onload() {
-    this.settings = { ...DEFAULT_SETTINGS, ...(await this.loadData()) };
+    this.settings = { ...DEFAULT_SETTINGS, ...((await this.loadData()) as Partial<Settings> | null) };
     this.settings.defaultColor = normalizeColor(this.settings.defaultColor);
 
     this.registerEditorExtension(annotationHighlighter);
@@ -185,7 +185,7 @@ export default class InlineAnnotationsPlugin extends Plugin {
       name: "编辑光标处批注",
       editorCallback: (editor, view) => {
         const a = this.annotationAtCursor(editor);
-        if (a && view.file) this.editAnnotation(view.file, a.id);
+        if (a && view.file) void this.editAnnotation(view.file, a.id);
       },
     });
     this.addCommand({
@@ -486,8 +486,7 @@ export default class InlineAnnotationsPlugin extends Plugin {
 
       let current: Node = text;
       for (const [id, color] of open) {
-        const span = doc.createElement("span");
-        span.className = "ann-hl";
+        const span = doc.createEl("span", { cls: "ann-hl" });
         span.dataset.id = id;
         span.dataset.color = color;
         if (file) {
@@ -538,7 +537,7 @@ export default class InlineAnnotationsPlugin extends Plugin {
     const win = doc.defaultView ?? window;
     const pop = doc.body.createDiv({ cls: "ann-popover" });
     pop.dataset.annId = id;
-    pop.style.setProperty("--ann-pop-color", COLORS.find((c) => c.key === normalizeColor(anchor.dataset.color))?.css ?? "");
+    pop.setCssProps({ "--ann-pop-color": COLORS.find((c) => c.key === normalizeColor(anchor.dataset.color))?.css ?? "" });
     pop.createDiv({ cls: "ann-popover-body", text: note });
 
     if (file) {
@@ -557,8 +556,10 @@ export default class InlineAnnotationsPlugin extends Plugin {
 
     const rect = anchor.getBoundingClientRect();
     const width = Math.min(pop.offsetWidth || 320, win.innerWidth - 16);
-    pop.style.left = `${Math.max(8, Math.min(rect.left, win.innerWidth - width - 8))}px`;
-    pop.style.top = `${rect.bottom + 6}px`;
+    pop.setCssProps({
+      left: `${Math.max(8, Math.min(rect.left, win.innerWidth - width - 8))}px`,
+      top: `${rect.bottom + 6}px`,
+    });
 
     const onDown = (e: Event) => {
       if (!pop.contains(e.target as Node) && e.target !== anchor) this.closePopover();

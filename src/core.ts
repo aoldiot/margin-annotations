@@ -68,7 +68,7 @@ export interface TextChange {
   insert: string;
 }
 
-const ESCAPE_RE = /[&"<>\n\r\[\]$%#=~`]/g;
+const ESCAPE_RE = /[&"<>\n\r[\]$%#=~`]/g;
 
 /** Escape for an HTML attribute value. Also neutralises Obsidian-specific syntax ([[ ]], $, %%, #tag, ==). */
 export function encodeAttr(s: string): string {
@@ -107,9 +107,13 @@ function encodeReplies(replies: Reply[]): string {
 function decodeReplies(raw: string | undefined): Reply[] {
   if (!raw) return [];
   try {
-    const arr = JSON.parse(decodeAttr(raw));
+    const arr: unknown = JSON.parse(decodeAttr(raw));
     if (!Array.isArray(arr)) return [];
-    return arr.map((r) => ({ author: String(r?.a ?? ""), time: String(r?.t ?? ""), text: String(r?.c ?? "") }));
+    return arr.map((item: unknown) => {
+      const r = (item ?? {}) as Record<string, unknown>;
+      const str = (v: unknown) => (typeof v === "string" ? v : "");
+      return { author: str(r.a), time: str(r.t), text: str(r.c) };
+    });
   } catch {
     return [];
   }
