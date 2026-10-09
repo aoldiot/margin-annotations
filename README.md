@@ -1,12 +1,101 @@
-# Margin Annotations(行内批注)
+# Margin Annotations
 
-Word-style annotations for Obsidian: select text, write a comment in the sidebar, reply, resolve or delete it. Annotations are stored as `<span>` markers in the markdown source, so AI agents can read them straight from the file. (Chinese UI; details below.)
+Word-style annotations for Obsidian. Select text, write a comment in the sidebar, reply to it, resolve it or delete it. Each annotation and reply carries a timestamp.
 
-> Note: adding or editing an annotation modifies the note's source text (inserts a pair of `<span>` markers).
+Annotations are stored as a pair of `<span>` markers directly in the Markdown source, so AI agents (Claude Code and similar) can read and act on them straight from the file. No export or API is needed.
+
+> **Note:** adding, editing or deleting an annotation modifies the note's source text (it inserts or removes the `<span>` markers). The plugin's interface is currently in Chinese; this README is in English first, with a Chinese version below.
+
+## Features
+
+- Annotate any selection, including across lines, paragraphs, list items and headings.
+- Six highlight colors (yellow, green, blue, pink, purple, orange), changeable per annotation.
+- **Sidebar in Obsidian's right dock** with one card per annotation:
+  - write the comment in the sidebar right after selecting text;
+  - cards sit next to the text they annotate and scroll with the note (can be switched off for a plain list);
+  - scroll the sidebar to scroll the note;
+  - reply, resolve / unresolve, edit, change color, delete;
+  - author name and timestamp on every annotation and reply.
+- A draft annotation is saved automatically when you click anywhere else, as long as it has text.
+- Click empty space in the sidebar to deselect; press `Delete` / `Backspace` to delete the selected annotation.
+- Reading view shows highlights and a small 💬 button; right-click works on highlights too.
+- Code blocks, tables and horizontal rules are skipped automatically.
+
+## Installation
+
+**From the Community Plugins browser** (once the plugin is published)
+
+1. Open **Settings → Community plugins → Browse**.
+2. Search for "Margin Annotations", then select **Install** and **Enable**.
+
+**Manual installation**
+
+1. Download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/aoldiot/margin-annotations/releases/latest).
+2. Copy them into `<your vault>/.obsidian/plugins/margin-annotations/`.
+3. Reload Obsidian and enable **Margin Annotations** under **Settings → Community plugins**.
+
+## Usage
+
+1. Open a note in editing mode (source or live preview) and select some text.
+2. Run the command **Add annotation** (or right-click → **Add annotation**). Assign a hotkey under **Settings → Hotkeys** by searching for "Add annotation".
+3. Write your comment in the sidebar card and press `Cmd/Ctrl + Enter`, or just click elsewhere. The card is saved.
+4. Use the **⋯** menu on a card to reply, resolve, edit, recolor or delete. Click a card to select it; a reply box appears at the bottom.
+5. Open or close the sidebar with the ribbon icon or the command **Open/close annotation sidebar**.
+
+| Action | How |
+|---|---|
+| Add | Select text, run **Add annotation**, type in the sidebar |
+| Reply | Click a card, type in the reply box, press `Enter` |
+| Resolve / unresolve | **⋯** menu on the card, or the right-click menu |
+| Delete | **⋯** menu, `Delete` key on a selected card, or the command **Delete selected annotation** |
+| Toggle follow mode | **Settings → Margin Annotations → follow note** (off = plain list) |
+| Author name | **Settings → Margin Annotations** |
+
+Annotations cannot be created in reading view, because reading view cannot be reliably mapped back to the source. Switch to editing mode to add them.
+
+## File format (for AI agents)
+
+One annotation is a start marker, the annotated text and an end marker. The comment lives on the end marker's `data-note` attribute:
+
+```html
+<span class="ann-s" data-id="k3f9" data-color="yellow"></span>Annotated text, possibly spanning several paragraphs.
+Last line.<span class="ann-e" data-id="k3f9" data-color="yellow" data-note="Too formal, make it conversational" data-author="sky" data-time="2026-10-09 13:36" data-resolved="1" data-replies="[{&#34;a&#34;:&#34;sky&#34;,&#34;t&#34;:&#34;2026-10-09 13:37&#34;,&#34;c&#34;:&#34;Done&#34;}]"></span>
+```
+
+- `data-id` pairs the start and end markers.
+- `data-color` is one of `yellow`, `green`, `blue`, `pink`, `purple`, `orange`.
+- `data-author` / `data-time` (optional) are the author and creation time.
+- `data-resolved="1"` marks a resolved annotation.
+- `data-replies` (optional) is a JSON array: `a` author, `t` time, `c` content.
+- `data-note` is the comment, HTML-entity escaped (for example `&#10;` is a newline).
+
+Example prompt for an agent:
+
+```
+Read every <span class="ann-e" ... data-note="..."> annotation in xxx.md.
+The text an annotation refers to lies between the ann-s and ann-e markers with the same data-id.
+Skip annotations with data-resolved="1". Revise the text according to each note (and its data-replies discussion),
+then remove both markers of the annotation. Do not touch text without annotations.
+```
+
+## Known limitations
+
+- Without this plugin, the markers are invisible empty `<span>` elements: your text is intact, but no highlights are shown.
+- If an annotation's start or end falls inside Markdown syntax such as `**bold**`, rendering may be off.
+- Overlapping annotations stack their colors in reading view.
+- Annotations cannot be placed inside table cells or code blocks.
+
+## License
+
+MIT
+
+---
+
+## 中文说明
 
 在 Markdown **原文**里直接添加批注的 Obsidian 插件。批注就是源文件里的一对标记,所以 AI agent(Claude Code 等)读文件就能看到并处理,不需要导出、不需要接口。
 
-## 功能
+### 功能
 
 - 选中文字加批注,**支持跨行、跨段落、跨列表、跨标题**
 - 6 种颜色(黄、绿、蓝、粉、紫、橙),每条批注可单独更改
@@ -15,11 +104,11 @@ Word-style annotations for Obsidian: select text, write a comment in the sidebar
 - **右键菜单**:编辑模式有「添加批注」,光标在批注内有「编辑 / 更改批注颜色 / 删除批注」;阅读模式在高亮上右键同样可用
 - 代码块、表格、分隔线会被自动跳过,不会被插入标记
 
-## 安装
+### 安装
 
 把 `main.js`、`manifest.json`、`styles.css` 三个文件复制到 vault 的 `.obsidian/plugins/margin-annotations/` 目录,然后在 Obsidian「设置 → 第三方插件」中启用「行内批注」。
 
-## 使用
+### 使用
 
 | 操作 | 方法 |
 |---|---|
@@ -32,7 +121,7 @@ Word-style annotations for Obsidian: select text, write a comment in the sidebar
 
 > 阅读模式下无法直接添加批注(阅读视图无法可靠映射回源文件位置),请在编辑模式(源码或实时预览)下添加。
 
-## 源文件格式(给 AI agent 看)
+### 源文件格式(给 AI agent 看)
 
 一条批注 = 开头标记 + 被批注的文字 + 结尾标记,**批注内容写在结尾标记的 `data-note` 上**:
 
@@ -48,7 +137,7 @@ Word-style annotations for Obsidian: select text, write a comment in the sidebar
 - `data-replies`:答复列表,JSON 数组,`a`=答复人、`t`=时间、`c`=内容(可选)
 - `data-note`:批注内容。HTML 实体转义,例如 `&#10;` 是换行、`&quot;` 是双引号、`&#91;` 是 `[`
 
-### 让 agent 处理批注的提示词示例
+#### 让 agent 处理批注的提示词示例
 
 ```
 读取 xxx.md 里所有 <span class="ann-e" ... data-note="..."> 批注。
@@ -57,7 +146,7 @@ Word-style annotations for Obsidian: select text, write a comment in the sidebar
 没有批注的内容不要改动。
 ```
 
-## 已知限制
+### 已知限制
 
 - 只有安装了本插件,阅读模式才会显示高亮;未安装时(如用 Typora 打开)标记是不可见的空 `<span>`,内容不受影响,但看不到高亮。
 - 批注范围的开头/结尾若落在 `**加粗**` 这类 Markdown 语法中间,渲染可能错位。
