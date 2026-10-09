@@ -326,14 +326,40 @@ export default class InlineAnnotationsPlugin extends Plugin {
     });
   }
 
+  /**
+   * Remember the scroll position of every view showing `file`; the returned function puts it back.
+   * Editing the file re-renders reading views (and can nudge editors), which would otherwise jump to the top.
+   */
+  private captureScroll(file: TFile): () => void {
+    const saved: [HTMLElement, number][] = [];
+    for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+      const v = leaf.view;
+      if (!(v instanceof MarkdownView) || v.file?.path !== file.path) continue;
+      const el =
+        v.getMode() === "source"
+          ? (v.editor as unknown as { cm?: EditorView }).cm?.scrollDOM
+          : v.contentEl.querySelector<HTMLElement>(".markdown-preview-view");
+      if (el) saved.push([el, el.scrollTop]);
+    }
+    return () => {
+      for (const delay of [0, 60, 200, 500]) {
+        window.setTimeout(() => {
+          for (const [el, top] of saved) if (Math.abs(el.scrollTop - top) > 2) el.scrollTop = top;
+        }, delay);
+      }
+    };
+  }
+
   /** Apply `fn(doc)` changes through the open editor when there is one, else straight to the file. */
   async mutate(file: TFile, fn: (doc: string) => TextChange[] | null): Promise<boolean> {
+    const restoreScroll = this.captureScroll(file);
     const v = this.findSourceView(file);
     if (v) {
       const doc = v.editor.getValue();
       const changes = fn(doc);
       if (!changes?.length) return false;
       this.applyToEditor(v.editor, withGuide(doc, changes));
+      restoreScroll();
       return true;
     }
     let ok = false;
@@ -343,6 +369,7 @@ export default class InlineAnnotationsPlugin extends Plugin {
       ok = true;
       return applyChanges(doc, withGuide(doc, changes));
     });
+    restoreScroll();
     return ok;
   }
 

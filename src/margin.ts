@@ -30,6 +30,7 @@ export class MarginPanel {
   anns: Annotation[] = [];
   private el: HTMLElement;
   private track!: HTMLElement;
+  private lastTrackH = "";
   private doc = "";
   private filePath = "";
   private mode = "";
@@ -158,6 +159,7 @@ export class MarginPanel {
       this.draft = null;
       this.editingId = null;
       this.activeId = null;
+      this.lastTrackH = "";
       force = true;
     }
     const doc = await this.plugin.getDoc(file);
@@ -278,8 +280,12 @@ export class MarginPanel {
   private render(file: TFile) {
     this.draftCleanup?.();
     this.draftCleanup = null;
+    // Rebuilding the cards must not reset the panel's own scroll position.
+    const scrollTop = this.el.scrollTop;
+    const trackH = this.lastTrackH;
     this.el.empty();
     this.track = this.el.createDiv({ cls: "ann-track" });
+    if (trackH) this.track.setCssProps({ "--ann-track-h": trackH });
     this.el.toggleClass("ann-follow", this.follow);
     this.cards.clear();
     this.draftEl = null;
@@ -288,6 +294,7 @@ export class MarginPanel {
     if (!this.draft && this.anns.length === 0) {
       this.track.createDiv({ cls: "ann-empty", text: "这篇笔记还没有批注。选中文字后右键「添加批注」。" });
     }
+    this.el.scrollTop = scrollTop;
     this.schedule();
   }
 
@@ -578,7 +585,8 @@ export class MarginPanel {
       e.el.setCssProps({ "--ann-y": `${Math.round(e.top)}px` });
       bottom = Math.max(bottom, e.top + e.h);
     }
-    this.track.setCssProps({ "--ann-track-h": `${Math.ceil(bottom) + 24}px` });
+    this.lastTrackH = `${Math.ceil(bottom) + 24}px`;
+    this.track.setCssProps({ "--ann-track-h": this.lastTrackH });
 
     this.syncReadingHighlights();
   }
