@@ -13,6 +13,9 @@ import {
   encodeAttr,
   decodeAttr,
   rangeAtCursor,
+  withGuide,
+  guideChanges,
+  AGENT_GUIDE,
 } from "../src/core.ts";
 
 const S = (id = "k1", color = "yellow") => `<span class="ann-s" data-id="${id}" data-color="${color}"></span>`;
@@ -215,4 +218,53 @@ test("no selection: line, table cell and code block under the cursor", () => {
   assert.ok(doc.slice(code.from, code.to).startsWith("```"));
   assert.equal(rangeAtCursor(doc, doc.indexOf("\n\n") + 1), null);
   assert.equal(rangeAtCursor(doc, doc.indexOf("---") + 1), null);
+});
+
+test("agent guide sits at the end, stays in sync and is removed with the last annotation", () => {
+  const doc = "---\ntitle: t\n---\n正文一\n\n正文二";
+  const from = doc.indexOf("正文一");
+  const added = applyChanges(doc, withGuide(doc, wrapSelection(doc, from, from + 3, "N", "k1")!));
+  assert.ok(added.endsWith(`${AGENT_GUIDE}\n`), "guide is the last thing in the note");
+  assert.ok(added.startsWith("---\ntitle: t\n---\n"), "frontmatter untouched");
+  assert.equal(parseAnnotations(added).length, 1);
+  assert.equal(parseAnnotations(AGENT_GUIDE).length, 0, "guide text is never parsed as an annotation");
+  assert.ok(AGENT_GUIDE.includes('data-resolved="1"') && AGENT_GUIDE.includes("data-replies"));
+  assert.ok(AGENT_GUIDE.includes("严禁删除") && AGENT_GUIDE.includes("原样保留"));
+  assert.ok(!AGENT_GUIDE.slice(4, -4).includes("--"), "no -- inside the HTML comment");
+
+  // a second annotation does not duplicate the guide
+  const f2 = added.indexOf("正文二");
+  const two = applyChanges(added, withGuide(added, wrapSelection(added, f2, f2 + 3, "M", "k2")!));
+  assert.equal(two.split("<!-- ann-guide:start").length, 2);
+  assert.ok(two.endsWith(`${AGENT_GUIDE}\n`));
+
+  // removing one keeps it, removing the last takes it away again
+  const one = applyChanges(two, withGuide(two, removeAnnotationChanges(parseAnnotations(two)[1])));
+  assert.equal(one.split("<!-- ann-guide:start").length, 2);
+  const none = applyChanges(one, withGuide(one, removeAnnotationChanges(parseAnnotations(one)[0])));
+  assert.equal(none.trimEnd(), doc);
+});
+
+test("annotating the last words of a note keeps the end marker before the guide", () => {
+  const out = applyChanges("正文", withGuide("正文", wrapSelection("正文", 0, 2, "N", "k1")!));
+  const [a] = parseAnnotations(out);
+  assert.equal(out.slice(a.textFrom, a.textTo), "正文");
+  assert.ok(out.endsWith(`${AGENT_GUIDE}\n`));
+});
+
+test("an outdated or misplaced guide is moved to the end and refreshed", () => {
+  const old = "<!-- ann-guide:start\nold\nann-guide:end -->\n\n正文";
+  const out = applyChanges(old, guideChanges(old, 1));
+  assert.equal(out, `正文\n\n${AGENT_GUIDE}\n`);
+  assert.deepEqual(guideChanges(out, 1), [], "already canonical, nothing to do");
+});
+
+test("selections never include the guide", () => {
+  const t = "正文";
+  const doc = applyChanges(t, guideChanges(t, 1));
+  assert.equal(wrapSelection(doc, doc.indexOf("ann-guide:start"), doc.length, "N", "k9"), null);
+  const out = applyChanges(doc, wrapSelection(doc, 0, doc.length, "N", "k9")!);
+  const [a] = parseAnnotations(out);
+  assert.equal(out.slice(a.textFrom, a.textTo), "正文");
+  assert.ok(out.indexOf("ann-e") < out.indexOf("ann-guide:start"));
 });

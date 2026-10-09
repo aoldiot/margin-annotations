@@ -333,6 +333,12 @@ export function wrapSelection(
   color: string = DEFAULT_COLOR,
   meta: Meta = {},
 ): TextChange[] | null {
+  // never annotate (or reach into) the hidden agent guide
+  const guide = findGuide(doc);
+  if (guide) {
+    if (from >= guide.from) return null;
+    to = Math.min(to, guide.from);
+  }
   while (from < to && /\s/.test(doc[from])) from++;
   while (to > from && /\s/.test(doc[to - 1])) to--;
   if (from >= to) return null;
@@ -419,8 +425,84 @@ export function updateAnnotationChanges(ann: Annotation, patch: AnnotationPatch)
 
 export function applyChanges(doc: string, changes: TextChange[]): string {
   let out = doc;
-  for (const c of [...changes].sort((a, b) => b.from - a.from)) {
+  // Equal offsets: later entries are applied first so the final order matches the array order.
+  const ordered = changes.map((c, i) => ({ c, i })).sort((a, b) => b.c.from - a.c.from || b.i - a.i);
+  for (const { c } of ordered) {
     out = out.slice(0, c.from) + c.insert + out.slice(c.to);
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Hidden usage guide for AI agents (an HTML comment kept in sync with the annotations)
+// ---------------------------------------------------------------------------
+
+export const GUIDE_START = "<!-- ann-guide:start";
+export const GUIDE_END = "ann-guide:end -->";
+
+// Written without complete marker tags, so parseAnnotations never mistakes it for an annotation.
+export const AGENT_GUIDE = [
+  GUIDE_START,
+  "【重要】以下内容是写给 AI agent 的操作说明,由 Margin Annotations 插件自动维护。严禁删除、修改、移动或「整理」这段注释(包括 ann-guide:start 和 ann-guide:end 两行),否则批注功能的约定会丢失。",
+  "",
+  "本文档含「批注」。AI agent 处理批注的规则:",
+  "1. 一条批注 = 同一个 data-id 的两个空 span 标记:class 为 ann-s 的是开头标记,class 为 ann-e 的是结尾标记,两者之间的文字就是被批注的原文。",
+  "   批注内容在结尾标记的 data-note 属性,讨论记录在 data-replies 属性(JSON 数组,a=答复人、t=时间、c=内容)。",
+  "2. 只处理未解决的批注,即结尾标记上没有 data-resolved=\"1\" 的批注;不要改动没有批注的内容。",
+  "3. 按批注意见(以及 data-replies 里的讨论)修改被批注的原文。",
+  "4. 修改完成后,必须在该批注的结尾标记上加上 data-resolved=\"1\",把它标为已解决。不要删除批注的开头/结尾标记。",
+  "   取消解决 = 删除该标记上的 data-resolved=\"1\"。",
+  "5. 如果对批注或要怎么改有疑问,不要擅自修改,也不要标为已解决:在该结尾标记的 data-replies 末尾追加一条答复,",
+  "   例如 {\"a\":\"AI\",\"t\":\"2026-01-01 12:00\",\"c\":\"我的疑问\"}(时间格式 YYYY-MM-DD HH:mm);还没有 data-replies 时新建这个属性。",
+  "6. 属性值要做 HTML 实体转义:双引号写成 &#34;,& 写成 &amp;,< 写成 &lt;,> 写成 &gt;,换行写成 &#10;,",
+  "   并把 [ ] | # $ % = ` ~ 分别写成 &#91; &#93; &#124; &#35; &#36; &#37; &#61; &#96; &#126;。",
+  "",
+  "【再次提醒】这段说明是给 AI agent 看的,请原样保留,不要删除或修改。",
+  GUIDE_END,
+].join("\n");
+
+/** Offset of the guide inside `doc` as [from, to), or null. */
+export function findGuide(doc: string): TagRange | null {
+  const start = doc.indexOf(GUIDE_START);
+  if (start < 0) return null;
+  const endAt = doc.indexOf(GUIDE_END, start);
+  return endAt < 0 ? null : { from: start, to: endAt + GUIDE_END.length };
+}
+
+/**
+ * Changes that keep the guide at the very end of the note while it has annotations,
+ * and remove it once the last annotation is gone.
+ */
+export function guideChanges(doc: string, annotationCount: number): TextChange[] {
+  const g = findGuide(doc);
+  if (annotationCount === 0) {
+    if (!g) return [];
+    // also drop the newline after the guide and one of the blank lines before it
+    const to = doc[g.to] === "\n" ? g.to + 1 : g.to;
+    const from = doc[g.from - 1] === "\n" ? g.from - 1 : g.from;
+    return [{ from, to, insert: "" }];
+  }
+  if (g && g.to === doc.trimEnd().length && doc.slice(g.from, g.to) === AGENT_GUIDE) return [];
+
+  const changes: TextChange[] = [];
+  let rest = doc;
+  if (g) {
+    // outdated or misplaced guide: take it out (with the blank line after it) and re-add it at the end
+    let to = g.to;
+    for (let n = 0; n < 2 && doc[to] === "\n"; n++) to++;
+    changes.push({ from: g.from, to, insert: "" });
+    rest = doc.slice(0, g.from) + doc.slice(to);
+  }
+  const gap = rest.length === 0 || rest.endsWith("\n\n") ? "" : rest.endsWith("\n") ? "\n" : "\n\n";
+  changes.push({ from: doc.length, to: doc.length, insert: `${gap}${AGENT_GUIDE}\n` });
+  return changes;
+}
+
+/**
+ * `changes` plus whatever is needed to keep the guide in sync with the resulting annotation count.
+ * The guide changes come last so that, at equal offsets, an annotation's end marker precedes the guide.
+ */
+export function withGuide(doc: string, changes: TextChange[]): TextChange[] {
+  const count = parseAnnotations(applyChanges(doc, changes)).length;
+  return [...changes, ...guideChanges(doc, count)];
 }

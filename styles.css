@@ -28,6 +28,18 @@ body {
   font-size: 0.75em;
 }
 
+/* 给 AI agent 的说明:源码模式淡化显示,实时预览中隐藏 */
+.cm-line.ann-guide-line {
+  opacity: 0.45;
+}
+.ann-hide-markup .markdown-source-view.is-live-preview .cm-line.ann-guide-line {
+  display: none;
+}
+.ann-hide-markup .markdown-source-view.is-live-preview .cm-line .ann-tag {
+  font-size: 0;
+  opacity: 0;
+}
+
 /* ---- 阅读模式:💬 按钮 ---- */
 .ann-btn {
   cursor: pointer;

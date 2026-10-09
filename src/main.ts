@@ -22,6 +22,7 @@ import {
   TextChange,
   applyChanges,
   findAnnotationAt,
+  findGuide,
   findAnnotationById,
   lineOffset,
   normalizeColor,
@@ -29,6 +30,7 @@ import {
   rangeAtCursor,
   removeAnnotationChanges,
   updateAnnotationChanges,
+  withGuide,
   wrapSelection,
 } from "./core";
 import { MarginManager } from "./margin";
@@ -38,8 +40,9 @@ interface Settings {
   defaultColor: string;
   author: string;
   follow: boolean;
+  hideMarkup: boolean;
 }
-const DEFAULT_SETTINGS: Settings = { defaultColor: DEFAULT_COLOR, author: "", follow: true };
+const DEFAULT_SETTINGS: Settings = { defaultColor: DEFAULT_COLOR, author: "", follow: true, hideMarkup: true };
 
 // ---------------------------------------------------------------------------
 // Note + color dialog
@@ -127,6 +130,15 @@ function buildDecorations(view: EditorView): DecorationSet {
   const doc = view.state.doc.toString();
   if (!doc.includes('class="ann-')) return Decoration.none;
   const ranges: Range<Decoration>[] = [];
+  const guide = findGuide(doc);
+  if (guide) {
+    // line decorations let the stylesheet hide the agent guide in live preview
+    const first = view.state.doc.lineAt(guide.from).number;
+    const last = view.state.doc.lineAt(guide.to).number;
+    for (let n = first; n <= last; n++) {
+      ranges.push(Decoration.line({ class: "ann-guide-line" }).range(view.state.doc.line(n).from));
+    }
+  }
   for (const a of parseAnnotations(doc)) {
     ranges.push(Decoration.mark({ class: "ann-tag" }).range(a.startTag.from, a.startTag.to));
     if (a.textFrom < a.textTo) {
@@ -166,6 +178,7 @@ export default class InlineAnnotationsPlugin extends Plugin {
     this.settings = { ...DEFAULT_SETTINGS, ...((await this.loadData()) as Partial<Settings> | null) };
     this.settings.defaultColor = normalizeColor(this.settings.defaultColor);
 
+    this.applyMarkupSetting();
     this.registerEditorExtension(annotationHighlighter);
     this.registerView(VIEW_TYPE, (leaf) => new AnnotationSidebarView(leaf, this));
     this.registerEditorExtension(
@@ -231,7 +244,13 @@ export default class InlineAnnotationsPlugin extends Plugin {
     this.app.workspace.onLayoutReady(() => this.margin.sync(true));
   }
 
+  /** Toggle the body class that hides annotation markers and the agent guide in live preview. */
+  applyMarkupSetting() {
+    document.body.toggleClass("ann-hide-markup", this.settings.hideMarkup);
+  }
+
   onunload() {
+    document.body.removeClass("ann-hide-markup");
     this.closePopover();
     this.margin.detach();
   }
@@ -311,9 +330,10 @@ export default class InlineAnnotationsPlugin extends Plugin {
   async mutate(file: TFile, fn: (doc: string) => TextChange[] | null): Promise<boolean> {
     const v = this.findSourceView(file);
     if (v) {
-      const changes = fn(v.editor.getValue());
+      const doc = v.editor.getValue();
+      const changes = fn(doc);
       if (!changes?.length) return false;
-      this.applyToEditor(v.editor, changes);
+      this.applyToEditor(v.editor, withGuide(doc, changes));
       return true;
     }
     let ok = false;
@@ -321,7 +341,7 @@ export default class InlineAnnotationsPlugin extends Plugin {
       const changes = fn(doc);
       if (!changes?.length) return doc;
       ok = true;
-      return applyChanges(doc, changes);
+      return applyChanges(doc, withGuide(doc, changes));
     });
     return ok;
   }
@@ -653,6 +673,17 @@ class AnnotationSettingTab extends PluginSettingTab {
           this.plugin.settings.follow = v;
           await this.plugin.saveSettings();
           this.plugin.margin.sync(true);
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("实时预览中隐藏批注标记")
+      .setDesc("隐藏正文里的批注标记和给 AI agent 的说明(只影响实时预览;源码模式始终显示原文)。")
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.hideMarkup).onChange(async (v) => {
+          this.plugin.settings.hideMarkup = v;
+          await this.plugin.saveSettings();
+          this.plugin.applyMarkupSetting();
         }),
       );
 

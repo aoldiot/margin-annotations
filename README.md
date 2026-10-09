@@ -73,6 +73,8 @@ Last line.<span class="ann-e" data-id="k3f9" data-color="yellow" data-note="Too 
 - `data-replies` (optional) is a JSON array: `a` author, `t` time, `c` content.
 - `data-note` is the comment, HTML-entity escaped (for example `&#10;` is a newline).
 
+The plugin also keeps a hidden HTML comment (`<!-- ann-guide:start ... ann-guide:end -->`) at the end of every note that has annotations. It tells an AI agent how to work with them: handle only unresolved annotations, mark each one resolved by adding `data-resolved="1"` once the change is done (remove it to reopen), and ask questions by appending an entry to `data-replies` instead of editing blindly. The comment is marked as "do not delete or edit" for agents, is invisible in reading view, is hidden in live preview (switchable in the settings), is refreshed when the plugin updates it, and is removed again when the last annotation is deleted.
+
 Example prompt for an agent:
 
 ```

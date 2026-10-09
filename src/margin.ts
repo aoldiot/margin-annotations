@@ -9,6 +9,7 @@ import {
   newId,
   nowStamp,
   parseAnnotations,
+  withGuide,
   wrapSelection,
 } from "./core";
 import type InlineAnnotationsPlugin from "./main";
@@ -257,7 +258,7 @@ export class MarginPanel {
     this.draftCleanup?.();
     this.draftCleanup = null;
     this.activeId = id;
-    this.plugin.applyToEditor(editor, changes);
+    this.plugin.applyToEditor(editor, withGuide(doc, changes));
     await this.refresh(true);
   }
 
