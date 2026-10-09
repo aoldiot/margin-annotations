@@ -598,6 +598,20 @@ class AnnotationSettingTab extends PluginSettingTab {
     super(app, plugin);
   }
 
+  /** Open Obsidian's Hotkeys tab filtered to this plugin. app.setting is not in the public typings, hence the guards. */
+  private openHotkeySettings() {
+    type Tab = { searchComponent?: { setValue(v: string): void; onChanged?(): void } };
+    const setting = (this.app as unknown as { setting?: { open(): void; openTabById(id: string): Tab | undefined } }).setting;
+    if (!setting) {
+      new Notice("请手动打开「设置 → 快捷键」,搜索「批注」");
+      return;
+    }
+    setting.open();
+    const tab = setting.openTabById("hotkeys");
+    tab?.searchComponent?.setValue(this.plugin.manifest.name);
+    tab?.searchComponent?.onChanged?.();
+  }
+
   display() {
     const { containerEl } = this;
     containerEl.empty();
@@ -638,10 +652,11 @@ class AnnotationSettingTab extends PluginSettingTab {
         }),
       );
 
-    new Setting(containerEl)
+    const hk = new Setting(containerEl)
       .setName("添加批注快捷键")
-      .setDesc("在「设置 → 快捷键」里搜索「添加批注」「删除选中的批注」「打开/关闭批注栏」即可绑定快捷键。")
-      .controlEl.createSpan({ cls: "ann-hotkey-label", text: this.plugin.hotkeyText() });
+      .setDesc("快捷键由 Obsidian 统一管理。点击按钮跳转到「快捷键」设置并搜索本插件的命令(添加批注、删除选中的批注、打开/关闭批注栏)。");
+    hk.controlEl.createSpan({ cls: "ann-hotkey-label", text: this.plugin.hotkeyText() });
+    hk.addButton((b) => b.setButtonText("设置快捷键").onClick(() => this.openHotkeySettings()));
 
     new Setting(containerEl).setName("使用方法").setHeading();
     const ul = containerEl.createEl("ul");
