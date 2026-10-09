@@ -68,7 +68,7 @@ export interface TextChange {
   insert: string;
 }
 
-const ESCAPE_RE = /[&"<>\n\r[\]$%#=~`]/g;
+const ESCAPE_RE = /[&"<>\n\r[\]$%#=~`|]/g;
 
 /** Escape for an HTML attribute value. Also neutralises Obsidian-specific syntax ([[ ]], $, %%, #tag, ==). */
 export function encodeAttr(s: string): string {
@@ -234,10 +234,94 @@ function fenceStateBefore(doc: string, offset: number): boolean {
   return inFence;
 }
 
+interface FencedBlock {
+  /** start of the opening fence line */
+  from: number;
+  /** end of the closing fence line (or end of document when unclosed) */
+  to: number;
+  /** blockquote / indentation prefix of the opening fence line */
+  prefix: string;
+}
+
+/** The fenced code block that contains the whole selection [from, to], if any. */
+function fencedBlockAround(doc: string, from: number, to: number): FencedBlock | null {
+  let open: { ls: number; prefix: string } | null = null;
+  let ls = 0;
+  while (ls <= doc.length) {
+    let le = doc.indexOf("\n", ls);
+    if (le < 0) le = doc.length;
+    const line = doc.slice(ls, le);
+    if (FENCE_RE.test(line)) {
+      if (!open) {
+        open = { ls, prefix: /^[ \t>]*/.exec(line)![0] };
+      } else {
+        if (from >= open.ls && to <= le) return { from: open.ls, to: le, prefix: open.prefix };
+        open = null;
+      }
+    }
+    if (le >= doc.length) break;
+    ls = le + 1;
+  }
+  if (open && from >= open.ls) return { from: open.ls, to: doc.length, prefix: open.prefix };
+  return null;
+}
+
+/** Put the markers on lines of their own just outside the fences, so the code itself stays untouched. */
+function wrapCodeBlock(doc: string, b: FencedBlock, note: string, id: string, color: string, meta: Meta): TextChange[] {
+  const blank = b.prefix.trimEnd();
+  const needsGap = b.from > 0 && doc.slice(doc.lastIndexOf("\n", b.from - 2) + 1, b.from - 1).trim() !== "";
+  return [
+    { from: b.from, to: b.from, insert: `${needsGap ? blank + "\n" : ""}${b.prefix}${startTag(id, color)}\n${blank}\n` },
+    { from: b.to, to: b.to, insert: `\n${blank}\n${b.prefix}${endTag(id, color, note, meta)}` },
+  ];
+}
+
+const TABLE_SEPARATOR_RE = /^[ \t]*\|?[ \t:|-]+\|?[ \t]*$/;
+
+/** A selection inside one table cell (same line, no pipe) is annotated as plain inline text. */
+function tableCellRange(doc: string, from: number, to: number): TagRange | null {
+  const ls = doc.lastIndexOf("\n", from - 1) + 1;
+  let le = doc.indexOf("\n", from);
+  if (le < 0) le = doc.length;
+  if (to > le) return null;
+  const line = doc.slice(ls, le);
+  if (!line.trimStart().startsWith("|") || TABLE_SEPARATOR_RE.test(line)) return null;
+  if (doc.slice(from, to).includes("|")) return null;
+  return { from, to };
+}
+
+/**
+ * What to annotate when nothing is selected: the table cell, code block or line under the cursor.
+ * Returns null when there is no text there.
+ */
+export function rangeAtCursor(doc: string, offset: number): TagRange | null {
+  const block = fencedBlockAround(doc, offset, offset);
+  if (block) return { from: block.from, to: block.to };
+  const ls = doc.lastIndexOf("\n", offset - 1) + 1;
+  let le = doc.indexOf("\n", offset);
+  if (le < 0) le = doc.length;
+  const line = doc.slice(ls, le);
+  if (TABLE_SEPARATOR_RE.test(line)) return null;
+  let from = ls;
+  let to = le;
+  if (line.trimStart().startsWith("|")) {
+    const rel = offset - ls;
+    const left = line.lastIndexOf("|", Math.max(rel - 1, 0));
+    const right = line.indexOf("|", rel);
+    from = ls + left + 1;
+    to = right < 0 ? le : ls + right;
+  }
+  const text = doc.slice(from, to);
+  if (text.trim() === "" || HR_RE.test(text)) return null;
+  return { from, to };
+}
+
 /**
  * Insert a start marker and an end marker around doc[from, to).
  * The start marker is moved past list/heading/quote prefixes and the range never begins or ends inside
  * code fences, tables, horizontal rules or callout headers, so Markdown structure stays intact.
+ * Exceptions: a selection inside one table cell is wrapped as is, and a selection inside a fenced code block
+ * annotates the whole block (markers go on their own lines just outside the fences).
  * Returns null when nothing in the selection can be annotated.
  */
 export function wrapSelection(
@@ -252,6 +336,16 @@ export function wrapSelection(
   while (from < to && /\s/.test(doc[from])) from++;
   while (to > from && /\s/.test(doc[to - 1])) to--;
   if (from >= to) return null;
+
+  const block = fencedBlockAround(doc, from, to);
+  if (block) return wrapCodeBlock(doc, block, note, id, color, meta);
+  const cell = tableCellRange(doc, from, to);
+  if (cell) {
+    return [
+      { from: cell.from, to: cell.from, insert: startTag(id, color) },
+      { from: cell.to, to: cell.to, insert: endTag(id, color, note, meta) },
+    ];
+  }
 
   let inFence = fenceStateBefore(doc, from);
   let startPos = -1;

@@ -250,7 +250,7 @@ export class MarginPanel {
       time: nowStamp(),
     });
     if (!changes) {
-      new Notice("选区内没有可批注的文字(代码块、表格会被跳过)");
+      new Notice("选区内没有可批注的文字(选区跨单元格或跨行的表格不支持)");
       return;
     }
     this.draft = null;
@@ -638,7 +638,7 @@ export class MarginManager {
   async panelFor(editor: unknown): Promise<MarginPanel | null> {
     const view = this.markdownViews().find((v) => v.editor === editor);
     if (!view) return null;
-    await this.plugin.activateView(false);
+    await this.plugin.activateView(true);
     this.panel?.bind(view);
     return this.panel;
   }

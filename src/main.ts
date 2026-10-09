@@ -26,6 +26,7 @@ import {
   lineOffset,
   normalizeColor,
   parseAnnotations,
+  rangeAtCursor,
   removeAnnotationChanges,
   updateAnnotationChanges,
   wrapSelection,
@@ -210,11 +211,9 @@ export default class InlineAnnotationsPlugin extends Plugin {
       this.app.workspace.on("editor-menu", (menu, editor, info) => {
         const file = info.file;
         if (!file) return;
-        if (editor.somethingSelected()) {
-          menu.addItem((i) =>
-            i.setTitle("添加批注").setIcon("message-square-plus").onClick(() => this.addAnnotation(editor, file)),
-          );
-        }
+        menu.addItem((i) =>
+          i.setTitle("添加批注").setIcon("message-square-plus").onClick(() => this.addAnnotation(editor, file)),
+        );
         const ann = this.annotationAtCursor(editor, false);
         if (ann) this.fillAnnotationMenu(menu, file, ann.id);
       }),
@@ -267,7 +266,7 @@ export default class InlineAnnotationsPlugin extends Plugin {
       await right.setViewState({ type: VIEW_TYPE, active: false });
       leaf = right;
     }
-    if (reveal || workspace.rightSplit?.collapsed) await workspace.revealLeaf(leaf);
+    if (reveal) await workspace.revealLeaf(leaf);
     this.margin.sync(true);
   }
 
@@ -337,18 +336,23 @@ export default class InlineAnnotationsPlugin extends Plugin {
 
   addAnnotation(editor: Editor, file: TFile | null) {
     if (!file) return;
-    if (!editor.somethingSelected()) {
-      new Notice("请先选中要批注的文字");
-      return;
-    }
     const doc = editor.getValue();
     const a = editor.posToOffset(editor.getCursor("from"));
     const b = editor.posToOffset(editor.getCursor("to"));
-    const from = Math.min(a, b);
-    const to = Math.max(a, b);
+    let from = Math.min(a, b);
+    let to = Math.max(a, b);
+    if (!editor.somethingSelected()) {
+      // Nothing selected: annotate the table cell / code block / line under the cursor.
+      const r = rangeAtCursor(doc, from);
+      if (!r) {
+        new Notice("光标所在行没有可批注的文字");
+        return;
+      }
+      ({ from, to } = r);
+    }
 
     if (!wrapSelection(doc, from, to, "x", "test")) {
-      new Notice("选区内没有可批注的文字(代码块、表格会被跳过)");
+      new Notice("选区内没有可批注的文字(选区跨单元格或跨行的表格不支持)");
       return;
     }
 
@@ -664,7 +668,7 @@ class AnnotationSettingTab extends PluginSettingTab {
       "选中文字 → 按「添加批注」的快捷键(需先在「设置 → 快捷键」里绑定)或右键「添加批注」→ 在右侧批注栏输入内容 → ⌘/Ctrl + Enter 保存。",
       "右键菜单:选中文字时有「添加批注」;光标在批注内时有「编辑 / 更改颜色 / 删除」;阅读模式下在高亮上右键同样可用。",
       "右侧批注栏的每条批注显示批注人和时间,可「答复」「解决 / 取消解决」「编辑」「改色」「删除」,并随正文滚动。批注栏在 Obsidian 右侧边栏里,左侧工具栏 💬 图标可打开 / 关闭。",
-      "支持跨行、跨段落、跨列表批注。代码块和表格会被自动跳过。",
+      "支持跨行、跨段落、跨列表批注。可在表格单元格内批注;选中代码块内容会批注整个代码块。",
       "源文件里批注是一对空的 <span> 标记(开头标记 + 结尾标记,批注内容写在结尾标记上),AI agent 读文件就能处理。",
     ].forEach((t) => ul.createEl("li", { text: t }));
   }

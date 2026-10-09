@@ -21,7 +21,9 @@ Annotations are stored as a pair of `<span>` markers directly in the Markdown so
 - A draft annotation is saved automatically when you click anywhere else, as long as it has text.
 - Click empty space in the sidebar to deselect; press `Delete` / `Backspace` to delete the selected annotation.
 - Reading view shows highlights and a small 💬 button; right-click works on highlights too.
-- Code blocks, tables and horizontal rules are skipped automatically.
+- Tables: select text inside a single table cell to annotate it. Selections spanning several cells or rows are not supported.
+- Code blocks: select anything inside a fenced code block to annotate the **whole block**; the markers are placed on their own lines just outside the fences, so the code stays untouched.
+- Horizontal rules are skipped automatically.
 
 ## Installation
 
@@ -85,7 +87,7 @@ then remove both markers of the annotation. Do not touch text without annotation
 - Without this plugin, the markers are invisible empty `<span>` elements: your text is intact, but no highlights are shown.
 - If an annotation's start or end falls inside Markdown syntax such as `**bold**`, rendering may be off.
 - Overlapping annotations stack their colors in reading view.
-- Annotations cannot be placed inside table cells or code blocks.
+- Table annotations must stay within one cell. Code block annotations always cover the entire block, never single lines. Fenced code blocks inside blockquotes are not recognized as code blocks.
 
 ## License
 

@@ -12,6 +12,7 @@ import {
   lineOffset,
   encodeAttr,
   decodeAttr,
+  rangeAtCursor,
 } from "../src/core.ts";
 
 const S = (id = "k1", color = "yellow") => `<span class="ann-s" data-id="${id}" data-color="${color}"></span>`;
@@ -72,8 +73,31 @@ test("selection starting inside a code fence", () => {
   assert.equal(out, `\`\`\`\ncode line\n\`\`\`\n${S()}正文${E()}`);
 });
 
-test("only code selected -> null", () => {
-  assert.equal(wrapSelection("```\ncode\n```", 4, 8, "N", "k1"), null);
+test("selection inside a code block annotates the whole block, code untouched", () => {
+  const doc = "前文\n```js\nlet a = 1\n```\n后文";
+  const from = doc.indexOf("let");
+  const out = applyChanges(doc, wrapSelection(doc, from, from + 3, "N", "k1")!);
+  assert.equal(out, `前文\n\n${S()}\n\n\`\`\`js\nlet a = 1\n\`\`\`\n\n${E()}\n后文`);
+  const [a] = parseAnnotations(out);
+  assert.ok(out.slice(a.textFrom, a.textTo).includes("let a = 1"));
+});
+
+test("selection inside one table cell is annotated", () => {
+  const doc = "| 名称 | 说明 |\n|---|---|\n| 甲 | 这是说明 |";
+  const out = annotate(doc, "这是说明")!;
+  assert.equal(out, `| 名称 | 说明 |\n|---|---|\n| 甲 | ${S()}这是说明${E()} |`);
+});
+
+test("table: selection across cells or the separator row is not annotated", () => {
+  const doc = "| 甲 | 乙 |\n|---|---|\n| 1 | 2 |";
+  assert.equal(wrapSelection(doc, 2, 7, "N", "k1"), null);
+  assert.equal(wrapSelection(doc, doc.indexOf("---"), doc.indexOf("---") + 3, "N", "k1"), null);
+});
+
+test("pipes in a note are escaped so tables keep working", () => {
+  const out = annotate("| a |\n|---|\n| b |", "b", "x|y")!;
+  assert.ok(!out.split("\n")[2].slice(2).replace(/ \|$/, "").includes("|"));
+  assert.equal(parseAnnotations(out)[0].note, "x|y");
 });
 
 test("trailing whitespace stays outside the end marker", () => {
@@ -176,4 +200,19 @@ test("legacy annotation without meta parses with defaults", () => {
   assert.equal(a.time, "");
   assert.equal(a.resolved, false);
   assert.deepEqual(a.replies, []);
+});
+
+test("no selection: line, table cell and code block under the cursor", () => {
+  const doc = "第一行文字\n\n| 甲 | 乙乙 |\n|---|---|\n\n```\ncode\n```";
+  const at = (needle: string, d = 0) => rangeAtCursor(doc, doc.indexOf(needle) + d)!;
+  const line = at("第一行");
+  assert.equal(doc.slice(line.from, line.to), "第一行文字");
+  const cell = at("乙乙", 1);
+  assert.equal(doc.slice(cell.from, cell.to).trim(), "乙乙");
+  const first = at("甲");
+  assert.equal(doc.slice(first.from, first.to).trim(), "甲");
+  const code = at("code", 2);
+  assert.ok(doc.slice(code.from, code.to).startsWith("```"));
+  assert.equal(rangeAtCursor(doc, doc.indexOf("\n\n") + 1), null);
+  assert.equal(rangeAtCursor(doc, doc.indexOf("---") + 1), null);
 });
