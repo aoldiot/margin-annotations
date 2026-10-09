@@ -486,7 +486,7 @@ export default class InlineAnnotationsPlugin extends Plugin {
 
       let current: Node = text;
       for (const [id, color] of open) {
-        const span = doc.createEl("span", { cls: "ann-hl" });
+        const span = parent.createSpan({ cls: "ann-hl" });
         span.dataset.id = id;
         span.dataset.color = color;
         if (file) {

@@ -532,11 +532,8 @@ export class MarginPanel {
   private layout() {
     if (!this.view) return;
     if (!this.follow) {
-      this.cards.forEach((c) => {
-        c.setCssProps({ transform: "" });
-        c.removeClass("is-hidden");
-      });
-      this.track.setCssProps({ "min-height": "" });
+      // List mode: the stylesheet ignores --ann-y / --ann-track-h, cards simply flow.
+      this.cards.forEach((c) => c.removeClass("is-hidden"));
       return;
     }
     const panelTop = this.el.getBoundingClientRect().top;
@@ -577,10 +574,10 @@ export class MarginPanel {
     }
     let bottom = 0;
     for (const e of entries) {
-      e.el.setCssProps({ transform: `translateY(${Math.round(e.top)}px)` });
+      e.el.setCssProps({ "--ann-y": `${Math.round(e.top)}px` });
       bottom = Math.max(bottom, e.top + e.h);
     }
-    this.track.setCssProps({ "min-height": `${Math.ceil(bottom) + 24}px` });
+    this.track.setCssProps({ "--ann-track-h": `${Math.ceil(bottom) + 24}px` });
 
     this.syncReadingHighlights();
   }

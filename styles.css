@@ -136,6 +136,7 @@ span.ann-s {
 .ann-follow .ann-track {
   display: block;
   padding: 0;
+  min-height: var(--ann-track-h, 100%);
 }
 .ann-hotkey-label {
   margin-right: 8px;
@@ -155,6 +156,7 @@ span.ann-s {
   left: 10px;
   right: 10px;
   top: 0;
+  transform: translateY(var(--ann-y, 0px));
   will-change: transform;
 }
 .ann-card {
