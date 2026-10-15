@@ -13,6 +13,10 @@ import {
   encodeAttr,
   decodeAttr,
   rangeAtCursor,
+  blockAround,
+  compactText,
+  findRenderedText,
+  occurrencesBefore,
   withGuide,
   guideChanges,
   AGENT_GUIDE,
@@ -267,4 +271,56 @@ test("selections never include the guide", () => {
   const [a] = parseAnnotations(out);
   assert.equal(out.slice(a.textFrom, a.textTo), "正文");
   assert.ok(out.indexOf("ann-e") < out.indexOf("ann-guide:start"));
+});
+
+const CALLOUT = "前文\n\n> [!abstract] 一句话定位\n> 杨杰是一名**面向农业**与现代\n> 畜牧业的负责人,关注[规则](http://x.y)。\n\n后文 面向农业";
+
+test("blockAround: the non-blank lines around an offset", () => {
+  const b = blockAround(CALLOUT, CALLOUT.indexOf("杨杰"));
+  assert.equal(CALLOUT.slice(b.from, b.to), "> [!abstract] 一句话定位\n> 杨杰是一名**面向农业**与现代\n> 畜牧业的负责人,关注[规则](http://x.y)。");
+  assert.deepEqual(blockAround("abc", 0), { from: 0, to: 3 });
+  assert.deepEqual(blockAround("\nabc", 2), { from: 1, to: 4 });
+});
+
+test("rendered selection maps back to the source, skipping markup and quote prefixes", () => {
+  const block = blockAround(CALLOUT, CALLOUT.indexOf("杨杰"));
+  const src = CALLOUT.slice(block.from, block.to);
+  const find = (rendered: string) => findRenderedText(src, rendered).map((r) => src.slice(r.from, r.to));
+
+  assert.deepEqual(find("杨杰是一名"), ["杨杰是一名"]);
+  // bold marks inside the range stay in the source slice
+  assert.deepEqual(find("面向农业与现代"), ["面向农业**与现代"]);
+  // soft line break + blockquote prefix between the two source lines
+  assert.deepEqual(find("与现代\n畜牧业"), ["与现代\n> 畜牧业"]);
+  // link text without its target
+  assert.deepEqual(find("关注规则。"), ["关注[规则](http://x.y)。"]);
+  // the callout title renders without "[!abstract]"
+  assert.deepEqual(find("一句话定位"), ["一句话定位"]);
+  // 💬 buttons and whitespace in the DOM text are ignored
+  assert.deepEqual(find(" 杨杰 是一名💬"), ["杨杰是一名"]);
+  assert.deepEqual(find("不存在的文字"), []);
+});
+
+test("rendered selection can be annotated through wrapSelection", () => {
+  const [hit] = findRenderedText(CALLOUT, "与现代\n畜牧业的负责人");
+  const out = applyChanges(CALLOUT, wrapSelection(CALLOUT, hit.from, hit.to, "N", "k1")!);
+  const [a] = parseAnnotations(out);
+  assert.equal(out.slice(a.textFrom, a.textTo), "与现代\n> 畜牧业的负责人");
+  assert.ok(out.includes(`${S()}与现代\n> 畜牧业的负责人${E()}`));
+});
+
+test("repeated text: occurrencesBefore picks the right hit", () => {
+  const src = "> 重复 一 重复 二 重复";
+  const hits = findRenderedText(src, "重复");
+  assert.equal(hits.length, 3);
+  const rendered = compactText("重复 一 重复 二 重复");
+  const nth = occurrencesBefore(rendered, "重复", compactText("重复 一 ").length);
+  assert.equal(nth, 1);
+  assert.equal(hits[nth].from, src.indexOf("重复", src.indexOf("重复") + 1));
+});
+
+test("code fences inside a callout: fence lines are not part of the rendered text", () => {
+  const src = "> [!note]\n> ```js\n> let a_b = 1;\n> ```";
+  const [hit] = findRenderedText(src, "let a_b = 1;");
+  assert.equal(src.slice(hit.from, hit.to), "let a_b = 1;");
 });

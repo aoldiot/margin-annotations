@@ -22,6 +22,7 @@ Annotations are stored as a pair of `<span>` markers directly in the Markdown so
 - Click empty space in the sidebar to deselect; press `Delete` / `Backspace` to delete the selected annotation.
 - Reading view shows highlights and a small 💬 button; right-click works on highlights too.
 - Tables: select text inside a single table cell to annotate it. Selections spanning several cells or rows are not supported.
+- Callouts and other rendered blocks in live preview: text selected in a callout you haven't double-clicked into (still rendered) can be annotated directly; no need to enter edit mode first.
 - Code blocks: select anything inside a fenced code block to annotate the **whole block**; the markers are placed on their own lines just outside the fences, so the code stays untouched.
 - Horizontal rules are skipped automatically.
 

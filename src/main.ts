@@ -21,11 +21,15 @@ import {
   DEFAULT_COLOR,
   TextChange,
   applyChanges,
+  blockAround,
+  compactText,
   findAnnotationAt,
   findGuide,
   findAnnotationById,
+  findRenderedText,
   lineOffset,
   normalizeColor,
+  occurrencesBefore,
   parseAnnotations,
   rangeAtCursor,
   removeAnnotationChanges,
@@ -389,8 +393,14 @@ export default class InlineAnnotationsPlugin extends Plugin {
     let from = Math.min(a, b);
     let to = Math.max(a, b);
     if (!editor.somethingSelected()) {
-      // Nothing selected: annotate the table cell / code block / line under the cursor.
-      const r = rangeAtCursor(doc, from);
+      // Text selected inside a rendered block (e.g. a callout in live preview) exists only in the DOM.
+      const rendered = this.renderedSelection(editor, doc);
+      if (rendered === "unlocated") {
+        new Notice("无法定位选中的文字,请双击进入编辑模式后再选中文字");
+        return;
+      }
+      // Otherwise nothing is selected: annotate the table cell / code block / line under the cursor.
+      const r = rendered ?? rangeAtCursor(doc, from);
       if (!r) {
         new Notice("光标所在行没有可批注的文字");
         return;
@@ -407,6 +417,49 @@ export default class InlineAnnotationsPlugin extends Plugin {
       if (panel) void panel.startDraft(from, to, doc.slice(from, to));
       else new Notice("请先切换到编辑模式,并选中要批注的文字");
     });
+  }
+
+  /**
+   * Live preview renders blocks the cursor is not in (callouts, ...) as widgets; text selected there is a DOM
+   * selection only and the editor's own selection stays empty. Map it back to a source range:
+   * null when the selection is not inside such a widget, "unlocated" when its text is not in the source.
+   */
+  private renderedSelection(editor: Editor, doc: string): { from: number; to: number } | "unlocated" | null {
+    const cm = (editor as unknown as { cm?: EditorView }).cm;
+    const sel = cm?.contentDOM.ownerDocument.getSelection();
+    if (!cm || !sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
+    const range = sel.getRangeAt(0);
+    const node = range.commonAncestorContainer;
+    const widget = (node.nodeType === 1 ? (node as Element) : node.parentElement)?.closest<HTMLElement>(".cm-embed-block");
+    if (!widget || !cm.contentDOM.contains(widget)) return null;
+
+    const selected = range.toString();
+    const target = compactText(selected);
+    if (!target) return "unlocated";
+
+    // which occurrence inside the widget was selected, in case the same text appears more than once
+    const whole = widget.ownerDocument.createRange();
+    whole.selectNodeContents(widget);
+    const head = whole.cloneRange();
+    head.setEnd(range.startContainer, range.startOffset);
+    const nth = occurrencesBefore(compactText(whole.toString()), target, compactText(head.toString()).length);
+
+    let start = -1;
+    try {
+      const r = widget.getBoundingClientRect();
+      start = cm.posAtCoords({ x: r.left + 2, y: r.top + 2 }, false);
+    } catch {
+      /* widget not laid out */
+    }
+    if (start >= 0) {
+      const block = blockAround(doc, start);
+      const hits = findRenderedText(doc.slice(block.from, block.to), selected);
+      const hit = hits[Math.min(nth, hits.length - 1)];
+      if (hit) return { from: block.from + hit.from, to: block.from + hit.to };
+    }
+    // widget position unknown: accept only an unambiguous match in the whole note
+    const all = findRenderedText(doc, selected);
+    return all.length === 1 ? all[0] : "unlocated";
   }
 
   async editAnnotation(file: TFile, id: string) {

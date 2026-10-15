@@ -316,6 +316,100 @@ export function rangeAtCursor(doc: string, offset: number): TagRange | null {
   return { from, to };
 }
 
+// ---------------------------------------------------------------------------
+// Rendered text → source offsets
+//
+// Live preview shows blocks the cursor is not in (callouts, ...) as rendered widgets. Text selected there is a
+// DOM selection only, so the editor reports an empty selection; these helpers find that text in the source.
+// ---------------------------------------------------------------------------
+
+const QUOTE_RE = /^[ \t]*(?:>[ \t]?)*[ \t]*/;
+/** Inline syntax that is in the source but not in the rendered text: HTML tags, link targets, callout headers. */
+const SYNTAX_TOKEN_RE = /<[^>\n]*>|\]\([^)\n]*\)|\[![^\]\n]*\][+-]?/y;
+const DROPPED_CHAR_RE = /[\s*_~=`\\[\]]/;
+
+/** Rendered text reduced to what survives in both the DOM and the source: no whitespace, emphasis marks or 💬 buttons. */
+export function compactText(s: string): string {
+  return Array.from(s.replace(/💬/gu, "")).filter((c) => !DROPPED_CHAR_RE.test(c)).join("");
+}
+
+/** The run of non-blank lines around `offset` (a blockquote / callout, paragraph, list, ...). */
+export function blockAround(doc: string, offset: number): TagRange {
+  const startOf = (o: number) => (o <= 0 ? 0 : doc.lastIndexOf("\n", o - 1) + 1);
+  const endOf = (o: number) => {
+    const i = doc.indexOf("\n", o);
+    return i < 0 ? doc.length : i;
+  };
+  let from = startOf(offset);
+  while (from > 0) {
+    const prev = startOf(from - 1);
+    if (doc.slice(prev, from - 1).trim() === "") break;
+    from = prev;
+  }
+  let to = endOf(offset);
+  while (to < doc.length) {
+    const next = endOf(to + 1);
+    if (doc.slice(to + 1, next).trim() === "") break;
+    to = next;
+  }
+  return { from, to };
+}
+
+/** `src` as it reads once rendered (compacted), with the source offset of every remaining character. */
+function renderedView(src: string): { text: string; at: number[] } {
+  let text = "";
+  const at: number[] = [];
+  let inFence = false;
+  let ls = 0;
+  for (;;) {
+    let le = src.indexOf("\n", ls);
+    if (le < 0) le = src.length;
+    const line = src.slice(ls, le);
+    const quote = QUOTE_RE.exec(line)![0].length;
+    const isFence = /^(```|~~~)/.test(line.slice(quote));
+    if (isFence) inFence = !inFence;
+    let i = ls + (inFence || isFence ? quote : PREFIX_RE.exec(line)![0].length);
+    if (isFence) i = le;
+    while (i < le) {
+      SYNTAX_TOKEN_RE.lastIndex = i;
+      const tok = inFence ? null : SYNTAX_TOKEN_RE.exec(src);
+      if (tok) {
+        i += tok[0].length;
+        continue;
+      }
+      const ch = src[i];
+      if (!DROPPED_CHAR_RE.test(ch)) {
+        text += ch;
+        at.push(i);
+      }
+      i++;
+    }
+    if (le >= src.length) break;
+    ls = le + 1;
+  }
+  return { text, at };
+}
+
+/** Every place in `src` where the rendered text `rendered` can come from, as source ranges. */
+export function findRenderedText(src: string, rendered: string): TagRange[] {
+  const target = compactText(rendered);
+  if (!target) return [];
+  const { text, at } = renderedView(src);
+  const hits: TagRange[] = [];
+  for (let i = text.indexOf(target); i >= 0; i = text.indexOf(target, i + target.length)) {
+    hits.push({ from: at[i], to: at[i + target.length - 1] + 1 });
+  }
+  return hits;
+}
+
+/** How many non-overlapping occurrences of `target` start before `before` in `haystack` (both compacted). */
+export function occurrencesBefore(haystack: string, target: string, before: number): number {
+  let n = 0;
+  if (!target) return n;
+  for (let i = haystack.indexOf(target); i >= 0 && i < before; i = haystack.indexOf(target, i + target.length)) n++;
+  return n;
+}
+
 /**
  * Insert a start marker and an end marker around doc[from, to).
  * The start marker is moved past list/heading/quote prefixes and the range never begins or ends inside
