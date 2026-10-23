@@ -233,7 +233,7 @@ test("agent guide sits at the end, stays in sync and is removed with the last an
   assert.equal(parseAnnotations(added).length, 1);
   assert.equal(parseAnnotations(AGENT_GUIDE).length, 0, "guide text is never parsed as an annotation");
   assert.ok(AGENT_GUIDE.includes('data-resolved="1"') && AGENT_GUIDE.includes("data-replies"));
-  assert.ok(AGENT_GUIDE.includes("严禁删除") && AGENT_GUIDE.includes("原样保留"));
+  assert.ok(AGENT_GUIDE.includes("Never delete") && AGENT_GUIDE.includes("Keep them exactly as they are"));
   assert.ok(!AGENT_GUIDE.slice(4, -4).includes("--"), "no -- inside the HTML comment");
 
   // a second annotation does not duplicate the guide

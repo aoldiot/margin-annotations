@@ -16,7 +16,7 @@ export class AnnotationSidebarView extends ItemView {
     return VIEW_TYPE;
   }
   getDisplayText() {
-    return "批注";
+    return "Annotation margin";
   }
   getIcon() {
     return "message-square";

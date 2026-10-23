@@ -151,7 +151,7 @@ export class MarginPanel {
       this.draft = null;
       this.el.empty();
       this.track = this.el.createDiv({ cls: "ann-track" });
-      this.track.createDiv({ cls: "ann-empty", text: "请先打开一篇 Markdown 笔记。" });
+      this.track.createDiv({ cls: "ann-empty", text: "Open a Markdown note first." });
       return;
     }
     if (file.path !== this.filePath) {
@@ -232,7 +232,7 @@ export class MarginPanel {
     if (!d || !file || !this.view) return;
     const text = note.trim();
     if (!text) {
-      new Notice("批注内容不能为空");
+      new Notice("The comment cannot be empty");
       return;
     }
     const editor = this.view.editor;
@@ -241,7 +241,7 @@ export class MarginPanel {
     if (doc.slice(from, to) !== d.text) {
       const idx = doc.indexOf(d.text);
       if (idx < 0) {
-        new Notice("原文已被修改,请重新选择文字后再添加批注");
+        new Notice("The underlying text has changed; reselect it before adding the annotation");
         return;
       }
       from = idx;
@@ -253,7 +253,7 @@ export class MarginPanel {
       time: nowStamp(),
     });
     if (!changes) {
-      new Notice("选区内没有可批注的文字(选区跨单元格或跨行的表格不支持)");
+      new Notice("No annotatable text in the selection (selections spanning table cells or rows are not supported)");
       return;
     }
     this.draft = null;
@@ -292,7 +292,7 @@ export class MarginPanel {
     if (this.draft) this.draftEl = this.renderDraft(this.draft);
     for (const a of this.anns) this.cards.set(a.id, this.renderCard(file, a));
     if (!this.draft && this.anns.length === 0) {
-      this.track.createDiv({ cls: "ann-empty", text: "这篇笔记还没有批注。选中文字后右键「添加批注」。" });
+      this.track.createDiv({ cls: "ann-empty", text: "No annotations in this note yet. Select text, then right-click → Add annotation." });
     }
     this.el.scrollTop = scrollTop;
     this.schedule();
@@ -300,11 +300,11 @@ export class MarginPanel {
 
   private renderHead(card: HTMLElement, author: string, time: string, color: string) {
     const head = card.createDiv({ cls: "ann-card-head" });
-    const av = head.createDiv({ cls: "ann-avatar", text: (author || "我").slice(0, 1) });
+    const av = head.createDiv({ cls: "ann-avatar", text: (author || "Me").slice(0, 1) });
     av.setCssProps({ background: colorCss(color) });
     const meta = head.createDiv({ cls: "ann-card-meta" });
     const name = meta.createDiv({ cls: "ann-author" });
-    name.createSpan({ text: author || "批注" });
+    name.createSpan({ text: author || "Annotation" });
     if (time) meta.createDiv({ cls: "ann-time", text: time });
     return { head, name };
   }
@@ -315,7 +315,7 @@ export class MarginPanel {
     this.renderHead(card, this.plugin.author(), nowStamp(), d.color);
     card.createDiv({ cls: "ann-card-quote", text: d.text.replace(/\s+/g, " ").trim().slice(0, 60) });
 
-    const area = card.createEl("textarea", { cls: "ann-card-edit", attr: { placeholder: "写下批注…(⌘/Ctrl + Enter 保存)", rows: "3" } });
+    const area = card.createEl("textarea", { cls: "ann-card-edit", attr: { placeholder: "Write a comment… (⌘/Ctrl + Enter to save)", rows: "3" } });
     const row = card.createDiv({ cls: "ann-color-row" });
     const swatches: HTMLElement[] = [];
     for (const c of COLORS) {
@@ -332,8 +332,8 @@ export class MarginPanel {
       swatches.push(sw);
     }
     const actions = card.createDiv({ cls: "ann-card-actions" });
-    const cancel = actions.createEl("button", { text: "取消" });
-    const save = actions.createEl("button", { text: "保存", cls: "mod-cta" });
+    const cancel = actions.createEl("button", { text: "Cancel" });
+    const save = actions.createEl("button", { text: "Save", cls: "mod-cta" });
     cancel.addEventListener("click", () => this.cancelDraft());
     // Clicking anywhere outside the card saves the draft as long as something was written.
     const onDown = (e: MouseEvent) => {
@@ -366,10 +366,10 @@ export class MarginPanel {
     });
 
     // Annotations written before timestamps existed fall back to the note's last-modified time.
-    const time = a.time || `约 ${nowStamp(new Date(file.stat.mtime))}`;
+    const time = a.time || `~ ${nowStamp(new Date(file.stat.mtime))}`;
     const { head, name } = this.renderHead(card, a.author, time, a.color);
-    if (a.resolved) name.createSpan({ cls: "ann-badge", text: "已解决" });
-    const more = head.createEl("button", { cls: "ann-icon-btn ann-more", attr: { "aria-label": "更多" } });
+    if (a.resolved) name.createSpan({ cls: "ann-badge", text: "Resolved" });
+    const more = head.createEl("button", { cls: "ann-icon-btn ann-more", attr: { "aria-label": "More" } });
     setIcon(more, "more-horizontal");
     more.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -384,8 +384,8 @@ export class MarginPanel {
       const area = card.createEl("textarea", { cls: "ann-card-edit", attr: { rows: "3" } });
       area.value = a.note;
       const actions = card.createDiv({ cls: "ann-card-actions" });
-      const cancel = actions.createEl("button", { text: "取消" });
-      const save = actions.createEl("button", { text: "保存", cls: "mod-cta" });
+      const cancel = actions.createEl("button", { text: "Cancel" });
+      const save = actions.createEl("button", { text: "Save", cls: "mod-cta" });
       const finish = () => {
         this.editingId = null;
         void this.refresh(true);
@@ -412,9 +412,9 @@ export class MarginPanel {
       a.replies.forEach((r, i) => {
         const item = list.createDiv({ cls: "ann-reply" });
         const top = item.createDiv({ cls: "ann-reply-head" });
-        top.createSpan({ cls: "ann-author", text: r.author || "回复" });
-        top.createSpan({ cls: "ann-time", text: r.time || `约 ${nowStamp(new Date(file.stat.mtime))}` });
-        const del = top.createEl("button", { cls: "ann-icon-btn ann-reply-del", attr: { "aria-label": "删除答复" } });
+        top.createSpan({ cls: "ann-author", text: r.author || "Reply" });
+        top.createSpan({ cls: "ann-time", text: r.time || `~ ${nowStamp(new Date(file.stat.mtime))}` });
+        const del = top.createEl("button", { cls: "ann-icon-btn ann-reply-del", attr: { "aria-label": "Delete reply" } });
         setIcon(del, "x");
         del.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -427,8 +427,8 @@ export class MarginPanel {
     }
 
     const box = card.createDiv({ cls: "ann-reply-box" });
-    const input = box.createEl("textarea", { cls: "ann-reply-input", attr: { placeholder: "答复…", rows: "1" } });
-    const send = box.createEl("button", { text: "发送", cls: "mod-cta" });
+    const input = box.createEl("textarea", { cls: "ann-reply-input", attr: { placeholder: "Reply…", rows: "1" } });
+    const send = box.createEl("button", { text: "Send", cls: "mod-cta" });
     const submit = async () => {
       const text = input.value.trim();
       if (!text) return;
@@ -455,25 +455,25 @@ export class MarginPanel {
   private showMenu(file: TFile, a: Annotation, e: MouseEvent) {
     const plugin = this.plugin;
     const menu = new Menu();
-    menu.addItem((i) => i.setTitle("答复").setIcon("message-square").onClick(() => this.focusReply(a.id)));
+    menu.addItem((i) => i.setTitle("Reply").setIcon("message-square").onClick(() => this.focusReply(a.id)));
     menu.addItem((i) =>
       i
-        .setTitle(a.resolved ? "取消解决" : "解决")
+        .setTitle(a.resolved ? "Unresolve" : "Resolve")
         .setIcon(a.resolved ? "rotate-ccw" : "check")
         .onClick(async () => {
           await plugin.updateAnnotation(file, a.id, (cur) => ({ resolved: !cur.resolved }));
           void this.refresh(true);
         }),
     );
-    menu.addItem((i) => i.setTitle("编辑").setIcon("pencil").onClick(() => this.startEdit(a.id)));
+    menu.addItem((i) => i.setTitle("Edit").setIcon("pencil").onClick(() => this.startEdit(a.id)));
     menu.addItem((i) => {
-      i.setTitle("更改颜色").setIcon("palette");
+      i.setTitle("Change color").setIcon("palette");
       const sub = (i as unknown as { setSubmenu?: () => Menu }).setSubmenu?.();
       if (sub) plugin.addColorItems(sub, (c) => void plugin.updateAnnotation(file, a.id, { color: c }), a.color);
     });
     menu.addItem((i) =>
       i
-        .setTitle("删除")
+        .setTitle("Delete")
         .setIcon("trash")
         .onClick(async () => {
           await plugin.deleteAnnotation(file, a.id);

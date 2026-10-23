@@ -74,7 +74,7 @@ class NoteModal extends Modal {
     this.setTitle(this.heading);
 
     const area = contentEl.createEl("textarea", { cls: "ann-modal-input" });
-    area.placeholder = "写下批注…(⌘/Ctrl + Enter 保存)";
+    area.placeholder = "Write a comment… (⌘/Ctrl + Enter to save)";
     area.rows = 5;
     area.value = this.note;
     area.addEventListener("input", () => (this.note = area.value));
@@ -86,7 +86,7 @@ class NoteModal extends Modal {
     });
 
     const row = contentEl.createDiv({ cls: "ann-color-row" });
-    row.createSpan({ text: "颜色", cls: "ann-color-label" });
+    row.createSpan({ text: "Color", cls: "ann-color-label" });
     const swatches: HTMLElement[] = [];
     for (const c of COLORS) {
       const sw = row.createSpan({ cls: "ann-swatch" });
@@ -102,8 +102,8 @@ class NoteModal extends Modal {
     }
 
     new Setting(contentEl)
-      .addButton((b) => b.setButtonText("取消").onClick(() => this.close()))
-      .addButton((b) => b.setButtonText("保存").setCta().onClick(() => this.submit()));
+      .addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+      .addButton((b) => b.setButtonText("Save").setCta().onClick(() => this.submit()));
 
     window.setTimeout(() => {
       area.focus();
@@ -114,7 +114,7 @@ class NoteModal extends Modal {
   private submit() {
     const note = this.note.trim();
     if (!note) {
-      new Notice("批注内容不能为空");
+      new Notice("The comment cannot be empty");
       return;
     }
     this.close();
@@ -191,16 +191,16 @@ export default class InlineAnnotationsPlugin extends Plugin {
       }),
     );
     this.addSettingTab(new AnnotationSettingTab(this.app, this));
-    this.addRibbonIcon("message-square", "批注栏", () => void this.toggleMargin());
+    this.addRibbonIcon("message-square", "Annotation margin", () => void this.toggleMargin());
 
     this.addCommand({
       id: "add-annotation",
-      name: "添加批注",
+      name: "Add annotation",
       editorCallback: (editor, view) => this.addAnnotation(editor, view.file),
     });
     this.addCommand({
       id: "edit-annotation",
-      name: "编辑光标处批注",
+      name: "Edit annotation at cursor",
       editorCallback: (editor, view) => {
         const a = this.annotationAtCursor(editor);
         if (a && view.file) void this.editAnnotation(view.file, a.id);
@@ -208,19 +208,19 @@ export default class InlineAnnotationsPlugin extends Plugin {
     });
     this.addCommand({
       id: "remove-annotation",
-      name: "删除选中的批注",
+      name: "Delete selected annotation",
       callback: () => {
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (view?.file && view.getMode() === "source") {
           const a = findAnnotationAt(view.editor.getValue(), view.editor.posToOffset(view.editor.getCursor("from")));
           if (a) return void this.deleteAnnotation(view.file, a.id);
         }
-        if (!this.margin.deleteSelected()) new Notice("请先选中一条批注(点击批注栏里的批注,或把光标放进批注文字)");
+        if (!this.margin.deleteSelected()) new Notice("Select an annotation first (click one in the margin, or put the cursor inside the annotation's text)");
       },
     });
     this.addCommand({
       id: "toggle-margin",
-      name: "打开/关闭批注栏",
+      name: "Open/close the annotation margin",
       callback: () => void this.toggleMargin(),
     });
 
@@ -229,7 +229,7 @@ export default class InlineAnnotationsPlugin extends Plugin {
         const file = info.file;
         if (!file) return;
         menu.addItem((i) =>
-          i.setTitle("添加批注").setIcon("message-square-plus").onClick(() => this.addAnnotation(editor, file)),
+          i.setTitle("Add annotation").setIcon("message-square-plus").onClick(() => this.addAnnotation(editor, file)),
         );
         const ann = this.annotationAtCursor(editor, false);
         if (ann) this.fillAnnotationMenu(menu, file, ann.id);
@@ -263,14 +263,14 @@ export default class InlineAnnotationsPlugin extends Plugin {
   hotkeyText(): string {
     const hm = (this.app as unknown as { hotkeyManager?: { printHotkeyForCommand?(id: string): string } }).hotkeyManager;
     try {
-      return hm?.printHotkeyForCommand?.(`${this.manifest.id}:add-annotation`) || "未设置";
+      return hm?.printHotkeyForCommand?.(`${this.manifest.id}:add-annotation`) || "not set";
     } catch {
-      return "未设置";
+      return "not set";
     }
   }
 
   author(): string {
-    return this.settings.author.trim() || "我";
+    return this.settings.author.trim() || "Me";
   }
 
   async toggleMargin() {
@@ -381,7 +381,7 @@ export default class InlineAnnotationsPlugin extends Plugin {
 
   private annotationAtCursor(editor: Editor, notify = true): Annotation | null {
     const ann = findAnnotationAt(editor.getValue(), editor.posToOffset(editor.getCursor("from")));
-    if (!ann && notify) new Notice("光标不在任何批注内");
+    if (!ann && notify) new Notice("The cursor is not inside any annotation");
     return ann;
   }
 
@@ -396,26 +396,26 @@ export default class InlineAnnotationsPlugin extends Plugin {
       // Text selected inside a rendered block (e.g. a callout in live preview) exists only in the DOM.
       const rendered = this.renderedSelection(editor, doc);
       if (rendered === "unlocated") {
-        new Notice("无法定位选中的文字,请双击进入编辑模式后再选中文字");
+        new Notice("Could not locate the selected text; double-click into edit mode, then select the text");
         return;
       }
       // Otherwise nothing is selected: annotate the table cell / code block / line under the cursor.
       const r = rendered ?? rangeAtCursor(doc, from);
       if (!r) {
-        new Notice("光标所在行没有可批注的文字");
+        new Notice("No annotatable text on the cursor's line");
         return;
       }
       ({ from, to } = r);
     }
 
     if (!wrapSelection(doc, from, to, "x", "test")) {
-      new Notice("选区内没有可批注的文字(选区跨单元格或跨行的表格不支持)");
+      new Notice("No annotatable text in the selection (selections spanning table cells or rows are not supported)");
       return;
     }
 
     void this.margin.panelFor(editor).then((panel) => {
       if (panel) void panel.startDraft(from, to, doc.slice(from, to));
-      else new Notice("请先切换到编辑模式,并选中要批注的文字");
+      else new Notice("Switch to editing mode and select the text to annotate");
     });
   }
 
@@ -470,7 +470,7 @@ export default class InlineAnnotationsPlugin extends Plugin {
     }
     const ann = findAnnotationById(await this.getDoc(file), id);
     if (!ann) return;
-    new NoteModal(this.app, "编辑批注", ann.note, ann.color, (note, color) => {
+    new NoteModal(this.app, "Edit annotation", ann.note, ann.color, (note, color) => {
       void this.mutate(file, (doc) => {
         const a = findAnnotationById(doc, id);
         return a ? updateAnnotationChanges(a, { note, color }) : null;
@@ -509,23 +509,23 @@ export default class InlineAnnotationsPlugin extends Plugin {
     const panel = this.margin.panelForFile(file.path);
     const resolved = panel?.find(id)?.resolved ?? false;
     if (panel) {
-      menu.addItem((i) => i.setTitle("答复批注").setIcon("message-square").onClick(() => panel.focusReply(id)));
+      menu.addItem((i) => i.setTitle("Reply to annotation").setIcon("message-square").onClick(() => panel.focusReply(id)));
     }
     menu.addItem((i) =>
       i
-        .setTitle(resolved ? "取消解决" : "解决批注")
+        .setTitle(resolved ? "Unresolve" : "Resolve annotation")
         .setIcon(resolved ? "rotate-ccw" : "check")
         .onClick(() => void this.updateAnnotation(file, id, (a) => ({ resolved: !a.resolved }))),
     );
-    menu.addItem((i) => i.setTitle("编辑批注").setIcon("pencil").onClick(() => void this.editAnnotation(file, id)));
+    menu.addItem((i) => i.setTitle("Edit annotation").setIcon("pencil").onClick(() => void this.editAnnotation(file, id)));
     menu.addItem((i) => {
-      i.setTitle("更改批注颜色").setIcon("palette");
+      i.setTitle("Change annotation color").setIcon("palette");
       const sub = (i as unknown as { setSubmenu?: () => Menu }).setSubmenu?.();
       if (sub) this.addColorItems(sub, (c) => void this.updateAnnotation(file, id, { color: c }));
       else i.onClick(() => this.showColorMenu(file, id));
     });
     menu.addItem((i) =>
-      i.setTitle("删除批注").setIcon("trash").onClick(() => void this.deleteAnnotation(file, id)),
+      i.setTitle("Delete annotation").setIcon("trash").onClick(() => void this.deleteAnnotation(file, id)),
     );
   }
 
@@ -614,7 +614,7 @@ export default class InlineAnnotationsPlugin extends Plugin {
     marker.addClass("ann-btn");
     marker.setText("💬");
     marker.setAttribute("role", "button");
-    marker.setAttribute("aria-label", "查看批注");
+    marker.setAttribute("aria-label", "View annotation");
     marker.addEventListener("click", (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
@@ -646,12 +646,12 @@ export default class InlineAnnotationsPlugin extends Plugin {
 
     if (file) {
       const actions = pop.createDiv({ cls: "ann-popover-actions" });
-      const edit = actions.createEl("button", { text: "编辑" });
+      const edit = actions.createEl("button", { text: "Edit" });
       edit.addEventListener("click", () => {
         this.closePopover();
         void this.editAnnotation(file, id);
       });
-      const del = actions.createEl("button", { text: "删除" });
+      const del = actions.createEl("button", { text: "Delete" });
       del.addEventListener("click", () => {
         this.closePopover();
         void this.deleteAnnotation(file, id);
@@ -707,7 +707,7 @@ class AnnotationSettingTab extends PluginSettingTab {
     type Tab = { searchComponent?: { setValue(v: string): void; onChanged?(): void } };
     const setting = (this.app as unknown as { setting?: { open(): void; openTabById(id: string): Tab | undefined } }).setting;
     if (!setting) {
-      new Notice("请手动打开「设置 → 快捷键」,搜索「批注」");
+      new Notice("Open Settings → Hotkeys and search for \"annotation\" manually");
       return;
     }
     setting.open();
@@ -721,12 +721,12 @@ class AnnotationSettingTab extends PluginSettingTab {
     containerEl.empty();
 
     containerEl.createEl("p", {
-      text: "在 Markdown 原文里直接插入批注标记:选中文字,按快捷键写下批注。阅读模式只显示高亮和一个 💬 按钮,AI agent 直接读源文件即可看到全部批注。",
+      text: "Inserts annotation markers directly into the Markdown source: select text, press the hotkey, write the comment. Reading view shows only the highlight and a 💬 button; AI agents see every annotation by reading the source file.",
     });
 
     new Setting(containerEl)
-      .setName("默认批注颜色")
-      .setDesc("添加批注时对话框里预选的颜色,每条批注之后都可以单独更改。")
+      .setName("Default annotation color")
+      .setDesc("Color preselected in the add-annotation dialog; each annotation can be changed individually afterwards.")
       .addDropdown((d) => {
         for (const c of COLORS) d.addOption(c.key, c.label);
         d.setValue(this.plugin.settings.defaultColor).onChange(async (v) => {
@@ -736,8 +736,8 @@ class AnnotationSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("批注人名称")
-      .setDesc("显示在批注和答复上,留空则显示「我」。")
+      .setName("Author name")
+      .setDesc("Shown on annotations and replies; leave empty to show \"Me\".")
       .addText((t) =>
         t.setValue(this.plugin.settings.author).onChange(async (v) => {
           this.plugin.settings.author = v;
@@ -746,8 +746,8 @@ class AnnotationSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("批注跟随正文")
-      .setDesc("开启:批注卡片紧贴对应原文,随正文滚动(批注较多时可单独上下滚动批注栏)。关闭:批注栏按原文顺序列表显示,点击批注跳转到原文。")
+      .setName("Margin follows the text")
+      .setDesc("On: annotation cards sit beside the text they annotate and scroll with it (the margin can scroll on its own when there are many). Off: the margin lists annotations in note order; click one to jump to its text.")
       .addToggle((t) =>
         t.setValue(this.plugin.settings.follow).onChange(async (v) => {
           this.plugin.settings.follow = v;
@@ -757,8 +757,8 @@ class AnnotationSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("实时预览中隐藏批注标记")
-      .setDesc("隐藏正文里的批注标记和给 AI agent 的说明(只影响实时预览;源码模式始终显示原文)。")
+      .setName("Hide annotation markers in live preview")
+      .setDesc("Hides annotation markers and the AI agent guide in the note body (live preview only; source mode always shows the raw text).")
       .addToggle((t) =>
         t.setValue(this.plugin.settings.hideMarkup).onChange(async (v) => {
           this.plugin.settings.hideMarkup = v;
@@ -768,19 +768,19 @@ class AnnotationSettingTab extends PluginSettingTab {
       );
 
     const hk = new Setting(containerEl)
-      .setName("添加批注快捷键")
-      .setDesc("快捷键由 Obsidian 统一管理。点击按钮跳转到「快捷键」设置并搜索本插件的命令(添加批注、删除选中的批注、打开/关闭批注栏)。");
+      .setName("Add-annotation hotkey")
+      .setDesc("Hotkeys are managed by Obsidian. The button opens the Hotkeys settings filtered to this plugin's commands (add annotation, delete selected annotation, open/close the margin).");
     hk.controlEl.createSpan({ cls: "ann-hotkey-label", text: this.plugin.hotkeyText() });
-    hk.addButton((b) => b.setButtonText("设置快捷键").onClick(() => this.openHotkeySettings()));
+    hk.addButton((b) => b.setButtonText("Set hotkey").onClick(() => this.openHotkeySettings()));
 
-    new Setting(containerEl).setName("使用方法").setHeading();
+    new Setting(containerEl).setName("How to use").setHeading();
     const ul = containerEl.createEl("ul");
     [
-      "选中文字 → 按「添加批注」的快捷键(需先在「设置 → 快捷键」里绑定)或右键「添加批注」→ 在右侧批注栏输入内容 → ⌘/Ctrl + Enter 保存。",
-      "右键菜单:选中文字时有「添加批注」;光标在批注内时有「编辑 / 更改颜色 / 删除」;阅读模式下在高亮上右键同样可用。",
-      "右侧批注栏的每条批注显示批注人和时间,可「答复」「解决 / 取消解决」「编辑」「改色」「删除」,并随正文滚动。批注栏在 Obsidian 右侧边栏里,左侧工具栏 💬 图标可打开 / 关闭。",
-      "支持跨行、跨段落、跨列表批注。可在表格单元格内批注;选中代码块内容会批注整个代码块。",
-      "源文件里批注是一对空的 <span> 标记(开头标记 + 结尾标记,批注内容写在结尾标记上),AI agent 读文件就能处理。",
+      "Select text → press the Add-annotation hotkey (bind it first under Settings → Hotkeys) or right-click → Add annotation → type the comment in the margin → ⌘/Ctrl + Enter to save.",
+      "Context menu: Add annotation when text is selected; Edit / Change color / Delete when the cursor is inside an annotation; right-clicking a highlight works the same in reading view.",
+      "Each annotation in the margin shows author and time, and supports reply, resolve / unresolve, edit, recolor, and delete; cards scroll with the text. The margin lives in Obsidian's right sidebar; the 💬 ribbon icon opens/closes it.",
+      "Annotations can span lines, paragraphs, and lists. Table cells can be annotated; selecting inside a code block annotates the whole block.",
+      "In the source file an annotation is a pair of empty <span> markers (start + end, comment on the end marker); AI agents can work with them by reading the file.",
     ].forEach((t) => ul.createEl("li", { text: t }));
   }
 }
