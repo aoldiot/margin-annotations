@@ -1,4 +1,5 @@
 import { MarkdownView, Menu, Notice, TFile, setIcon } from "obsidian";
+import { t } from "./i18n";
 import type { EditorView } from "@codemirror/view";
 import {
   Annotation,
@@ -151,7 +152,7 @@ export class MarginPanel {
       this.draft = null;
       this.el.empty();
       this.track = this.el.createDiv({ cls: "ann-track" });
-      this.track.createDiv({ cls: "ann-empty", text: "Open a Markdown note first." });
+      this.track.createDiv({ cls: "ann-empty", text: t.openNoteFirst });
       return;
     }
     if (file.path !== this.filePath) {
@@ -232,7 +233,7 @@ export class MarginPanel {
     if (!d || !file || !this.view) return;
     const text = note.trim();
     if (!text) {
-      new Notice("The comment cannot be empty");
+      new Notice(t.commentEmpty);
       return;
     }
     const editor = this.view.editor;
@@ -241,7 +242,7 @@ export class MarginPanel {
     if (doc.slice(from, to) !== d.text) {
       const idx = doc.indexOf(d.text);
       if (idx < 0) {
-        new Notice("The underlying text has changed; reselect it before adding the annotation");
+        new Notice(t.textChanged);
         return;
       }
       from = idx;
@@ -253,7 +254,7 @@ export class MarginPanel {
       time: nowStamp(),
     });
     if (!changes) {
-      new Notice("No annotatable text in the selection (selections spanning table cells or rows are not supported)");
+      new Notice(t.noTextInSelection);
       return;
     }
     this.draft = null;
@@ -292,7 +293,7 @@ export class MarginPanel {
     if (this.draft) this.draftEl = this.renderDraft(this.draft);
     for (const a of this.anns) this.cards.set(a.id, this.renderCard(file, a));
     if (!this.draft && this.anns.length === 0) {
-      this.track.createDiv({ cls: "ann-empty", text: "No annotations in this note yet. Select text, then right-click → Add annotation." });
+      this.track.createDiv({ cls: "ann-empty", text: t.noAnnotationsYet });
     }
     this.el.scrollTop = scrollTop;
     this.schedule();
@@ -300,11 +301,11 @@ export class MarginPanel {
 
   private renderHead(card: HTMLElement, author: string, time: string, color: string) {
     const head = card.createDiv({ cls: "ann-card-head" });
-    const av = head.createDiv({ cls: "ann-avatar", text: (author || "Me").slice(0, 1) });
+    const av = head.createDiv({ cls: "ann-avatar", text: (author || t.authorMe).slice(0, 1) });
     av.setCssProps({ background: colorCss(color) });
     const meta = head.createDiv({ cls: "ann-card-meta" });
     const name = meta.createDiv({ cls: "ann-author" });
-    name.createSpan({ text: author || "Annotation" });
+    name.createSpan({ text: author || t.authorFallback });
     if (time) meta.createDiv({ cls: "ann-time", text: time });
     return { head, name };
   }
@@ -315,7 +316,7 @@ export class MarginPanel {
     this.renderHead(card, this.plugin.author(), nowStamp(), d.color);
     card.createDiv({ cls: "ann-card-quote", text: d.text.replace(/\s+/g, " ").trim().slice(0, 60) });
 
-    const area = card.createEl("textarea", { cls: "ann-card-edit", attr: { placeholder: "Write a comment… (⌘/Ctrl + Enter to save)", rows: "3" } });
+    const area = card.createEl("textarea", { cls: "ann-card-edit", attr: { placeholder: t.writePlaceholder, rows: "3" } });
     const row = card.createDiv({ cls: "ann-color-row" });
     const swatches: HTMLElement[] = [];
     for (const c of COLORS) {
@@ -332,8 +333,8 @@ export class MarginPanel {
       swatches.push(sw);
     }
     const actions = card.createDiv({ cls: "ann-card-actions" });
-    const cancel = actions.createEl("button", { text: "Cancel" });
-    const save = actions.createEl("button", { text: "Save", cls: "mod-cta" });
+    const cancel = actions.createEl("button", { text: t.cancel });
+    const save = actions.createEl("button", { text: t.save, cls: "mod-cta" });
     cancel.addEventListener("click", () => this.cancelDraft());
     // Clicking anywhere outside the card saves the draft as long as something was written.
     const onDown = (e: MouseEvent) => {
@@ -366,10 +367,10 @@ export class MarginPanel {
     });
 
     // Annotations written before timestamps existed fall back to the note's last-modified time.
-    const time = a.time || `~ ${nowStamp(new Date(file.stat.mtime))}`;
+    const time = a.time || `${t.approxPrefix}${nowStamp(new Date(file.stat.mtime))}`;
     const { head, name } = this.renderHead(card, a.author, time, a.color);
-    if (a.resolved) name.createSpan({ cls: "ann-badge", text: "Resolved" });
-    const more = head.createEl("button", { cls: "ann-icon-btn ann-more", attr: { "aria-label": "More" } });
+    if (a.resolved) name.createSpan({ cls: "ann-badge", text: t.resolvedBadge });
+    const more = head.createEl("button", { cls: "ann-icon-btn ann-more", attr: { "aria-label": t.more } });
     setIcon(more, "more-horizontal");
     more.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -384,8 +385,8 @@ export class MarginPanel {
       const area = card.createEl("textarea", { cls: "ann-card-edit", attr: { rows: "3" } });
       area.value = a.note;
       const actions = card.createDiv({ cls: "ann-card-actions" });
-      const cancel = actions.createEl("button", { text: "Cancel" });
-      const save = actions.createEl("button", { text: "Save", cls: "mod-cta" });
+      const cancel = actions.createEl("button", { text: t.cancel });
+      const save = actions.createEl("button", { text: t.save, cls: "mod-cta" });
       const finish = () => {
         this.editingId = null;
         void this.refresh(true);
@@ -412,9 +413,9 @@ export class MarginPanel {
       a.replies.forEach((r, i) => {
         const item = list.createDiv({ cls: "ann-reply" });
         const top = item.createDiv({ cls: "ann-reply-head" });
-        top.createSpan({ cls: "ann-author", text: r.author || "Reply" });
-        top.createSpan({ cls: "ann-time", text: r.time || `~ ${nowStamp(new Date(file.stat.mtime))}` });
-        const del = top.createEl("button", { cls: "ann-icon-btn ann-reply-del", attr: { "aria-label": "Delete reply" } });
+        top.createSpan({ cls: "ann-author", text: r.author || t.replyFallback });
+        top.createSpan({ cls: "ann-time", text: r.time || `${t.approxPrefix}${nowStamp(new Date(file.stat.mtime))}` });
+        const del = top.createEl("button", { cls: "ann-icon-btn ann-reply-del", attr: { "aria-label": t.deleteReply } });
         setIcon(del, "x");
         del.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -427,8 +428,8 @@ export class MarginPanel {
     }
 
     const box = card.createDiv({ cls: "ann-reply-box" });
-    const input = box.createEl("textarea", { cls: "ann-reply-input", attr: { placeholder: "Reply…", rows: "1" } });
-    const send = box.createEl("button", { text: "Send", cls: "mod-cta" });
+    const input = box.createEl("textarea", { cls: "ann-reply-input", attr: { placeholder: t.replyPlaceholder, rows: "1" } });
+    const send = box.createEl("button", { text: t.send, cls: "mod-cta" });
     const submit = async () => {
       const text = input.value.trim();
       if (!text) return;
@@ -455,25 +456,25 @@ export class MarginPanel {
   private showMenu(file: TFile, a: Annotation, e: MouseEvent) {
     const plugin = this.plugin;
     const menu = new Menu();
-    menu.addItem((i) => i.setTitle("Reply").setIcon("message-square").onClick(() => this.focusReply(a.id)));
+    menu.addItem((i) => i.setTitle(t.reply).setIcon("message-square").onClick(() => this.focusReply(a.id)));
     menu.addItem((i) =>
       i
-        .setTitle(a.resolved ? "Unresolve" : "Resolve")
+        .setTitle(a.resolved ? t.unresolve : t.resolveAnnotation)
         .setIcon(a.resolved ? "rotate-ccw" : "check")
         .onClick(async () => {
           await plugin.updateAnnotation(file, a.id, (cur) => ({ resolved: !cur.resolved }));
           void this.refresh(true);
         }),
     );
-    menu.addItem((i) => i.setTitle("Edit").setIcon("pencil").onClick(() => this.startEdit(a.id)));
+    menu.addItem((i) => i.setTitle(t.edit).setIcon("pencil").onClick(() => this.startEdit(a.id)));
     menu.addItem((i) => {
-      i.setTitle("Change color").setIcon("palette");
+      i.setTitle(t.changeColor).setIcon("palette");
       const sub = (i as unknown as { setSubmenu?: () => Menu }).setSubmenu?.();
       if (sub) plugin.addColorItems(sub, (c) => void plugin.updateAnnotation(file, a.id, { color: c }), a.color);
     });
     menu.addItem((i) =>
       i
-        .setTitle("Delete")
+        .setTitle(t.delete)
         .setIcon("trash")
         .onClick(async () => {
           await plugin.deleteAnnotation(file, a.id);

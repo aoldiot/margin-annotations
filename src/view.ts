@@ -1,5 +1,6 @@
 import { ItemView, WorkspaceLeaf } from "obsidian";
 import type InlineAnnotationsPlugin from "./main";
+import { t } from "./i18n";
 
 export const VIEW_TYPE = "inline-annotations-list";
 
@@ -16,7 +17,7 @@ export class AnnotationSidebarView extends ItemView {
     return VIEW_TYPE;
   }
   getDisplayText() {
-    return "Annotation margin";
+    return t.displayName;
   }
   getIcon() {
     return "message-square";

@@ -3,6 +3,7 @@ import {
   Editor,
   MarkdownPostProcessorContext,
   MarkdownView,
+  moment,
   Menu,
   Modal,
   Notice,
@@ -37,16 +38,19 @@ import {
   withGuide,
   wrapSelection,
 } from "./core";
+import { colorLabel, setLocale, t } from "./i18n";
+import type { Locale } from "./i18n";
 import { MarginManager } from "./margin";
 import { AnnotationSidebarView, VIEW_TYPE } from "./view";
 
 interface Settings {
+  language: "auto" | Locale;
   defaultColor: string;
   author: string;
   follow: boolean;
   hideMarkup: boolean;
 }
-const DEFAULT_SETTINGS: Settings = { defaultColor: DEFAULT_COLOR, author: "", follow: true, hideMarkup: true };
+const DEFAULT_SETTINGS: Settings = { language: "auto", defaultColor: DEFAULT_COLOR, author: "", follow: true, hideMarkup: true };
 
 // ---------------------------------------------------------------------------
 // Note + color dialog
@@ -74,7 +78,7 @@ class NoteModal extends Modal {
     this.setTitle(this.heading);
 
     const area = contentEl.createEl("textarea", { cls: "ann-modal-input" });
-    area.placeholder = "Write a comment… (⌘/Ctrl + Enter to save)";
+    area.placeholder = t.writePlaceholder;
     area.rows = 5;
     area.value = this.note;
     area.addEventListener("input", () => (this.note = area.value));
@@ -86,12 +90,12 @@ class NoteModal extends Modal {
     });
 
     const row = contentEl.createDiv({ cls: "ann-color-row" });
-    row.createSpan({ text: "Color", cls: "ann-color-label" });
+    row.createSpan({ text: t.colorLabel, cls: "ann-color-label" });
     const swatches: HTMLElement[] = [];
     for (const c of COLORS) {
       const sw = row.createSpan({ cls: "ann-swatch" });
       sw.setCssProps({ "--ann-swatch": c.css });
-      sw.setAttribute("aria-label", c.label);
+      sw.setAttribute("aria-label", colorLabel(c.key));
       sw.toggleClass("is-selected", c.key === this.color);
       sw.addEventListener("click", () => {
         this.color = c.key;
@@ -102,8 +106,8 @@ class NoteModal extends Modal {
     }
 
     new Setting(contentEl)
-      .addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
-      .addButton((b) => b.setButtonText("Save").setCta().onClick(() => this.submit()));
+      .addButton((b) => b.setButtonText(t.cancel).onClick(() => this.close()))
+      .addButton((b) => b.setButtonText(t.save).setCta().onClick(() => this.submit()));
 
     window.setTimeout(() => {
       area.focus();
@@ -114,7 +118,7 @@ class NoteModal extends Modal {
   private submit() {
     const note = this.note.trim();
     if (!note) {
-      new Notice("The comment cannot be empty");
+      new Notice(t.commentEmpty);
       return;
     }
     this.close();
@@ -181,6 +185,8 @@ export default class InlineAnnotationsPlugin extends Plugin {
   async onload() {
     this.settings = { ...DEFAULT_SETTINGS, ...((await this.loadData()) as Partial<Settings> | null) };
     this.settings.defaultColor = normalizeColor(this.settings.defaultColor);
+    const obsidianLang = moment.locale();
+    setLocale(this.settings.language === "auto" ? (obsidianLang.startsWith("zh") ? "zh" : "en") : this.settings.language);
 
     this.applyMarkupSetting();
     this.registerEditorExtension(annotationHighlighter);
@@ -191,16 +197,16 @@ export default class InlineAnnotationsPlugin extends Plugin {
       }),
     );
     this.addSettingTab(new AnnotationSettingTab(this.app, this));
-    this.addRibbonIcon("message-square", "Annotation margin", () => void this.toggleMargin());
+    this.addRibbonIcon("message-square", t.ribbonMargin, () => void this.toggleMargin());
 
     this.addCommand({
       id: "add-annotation",
-      name: "Add annotation",
+      name: t.addAnnotation,
       editorCallback: (editor, view) => this.addAnnotation(editor, view.file),
     });
     this.addCommand({
       id: "edit-annotation",
-      name: "Edit annotation at cursor",
+      name: t.editAtCursor,
       editorCallback: (editor, view) => {
         const a = this.annotationAtCursor(editor);
         if (a && view.file) void this.editAnnotation(view.file, a.id);
@@ -208,19 +214,19 @@ export default class InlineAnnotationsPlugin extends Plugin {
     });
     this.addCommand({
       id: "remove-annotation",
-      name: "Delete selected annotation",
+      name: t.deleteSelected,
       callback: () => {
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (view?.file && view.getMode() === "source") {
           const a = findAnnotationAt(view.editor.getValue(), view.editor.posToOffset(view.editor.getCursor("from")));
           if (a) return void this.deleteAnnotation(view.file, a.id);
         }
-        if (!this.margin.deleteSelected()) new Notice("Select an annotation first (click one in the margin, or put the cursor inside the annotation's text)");
+        if (!this.margin.deleteSelected()) new Notice(t.selectAnnotationFirst);
       },
     });
     this.addCommand({
       id: "toggle-margin",
-      name: "Open/close the annotation margin",
+      name: t.toggleMargin,
       callback: () => void this.toggleMargin(),
     });
 
@@ -229,7 +235,7 @@ export default class InlineAnnotationsPlugin extends Plugin {
         const file = info.file;
         if (!file) return;
         menu.addItem((i) =>
-          i.setTitle("Add annotation").setIcon("message-square-plus").onClick(() => this.addAnnotation(editor, file)),
+          i.setTitle(t.addAnnotation).setIcon("message-square-plus").onClick(() => this.addAnnotation(editor, file)),
         );
         const ann = this.annotationAtCursor(editor, false);
         if (ann) this.fillAnnotationMenu(menu, file, ann.id);
@@ -263,14 +269,14 @@ export default class InlineAnnotationsPlugin extends Plugin {
   hotkeyText(): string {
     const hm = (this.app as unknown as { hotkeyManager?: { printHotkeyForCommand?(id: string): string } }).hotkeyManager;
     try {
-      return hm?.printHotkeyForCommand?.(`${this.manifest.id}:add-annotation`) || "not set";
+      return hm?.printHotkeyForCommand?.(`${this.manifest.id}:add-annotation`) || t.notSet;
     } catch {
       return "not set";
     }
   }
 
   author(): string {
-    return this.settings.author.trim() || "Me";
+    return this.settings.author.trim() || t.authorMe;
   }
 
   async toggleMargin() {
@@ -381,7 +387,7 @@ export default class InlineAnnotationsPlugin extends Plugin {
 
   private annotationAtCursor(editor: Editor, notify = true): Annotation | null {
     const ann = findAnnotationAt(editor.getValue(), editor.posToOffset(editor.getCursor("from")));
-    if (!ann && notify) new Notice("The cursor is not inside any annotation");
+    if (!ann && notify) new Notice(t.notInsideAny);
     return ann;
   }
 
@@ -396,26 +402,26 @@ export default class InlineAnnotationsPlugin extends Plugin {
       // Text selected inside a rendered block (e.g. a callout in live preview) exists only in the DOM.
       const rendered = this.renderedSelection(editor, doc);
       if (rendered === "unlocated") {
-        new Notice("Could not locate the selected text; double-click into edit mode, then select the text");
+        new Notice(t.couldNotLocate);
         return;
       }
       // Otherwise nothing is selected: annotate the table cell / code block / line under the cursor.
       const r = rendered ?? rangeAtCursor(doc, from);
       if (!r) {
-        new Notice("No annotatable text on the cursor's line");
+        new Notice(t.noTextOnLine);
         return;
       }
       ({ from, to } = r);
     }
 
     if (!wrapSelection(doc, from, to, "x", "test")) {
-      new Notice("No annotatable text in the selection (selections spanning table cells or rows are not supported)");
+      new Notice(t.noTextInSelection);
       return;
     }
 
     void this.margin.panelFor(editor).then((panel) => {
       if (panel) void panel.startDraft(from, to, doc.slice(from, to));
-      else new Notice("Switch to editing mode and select the text to annotate");
+      else new Notice(t.switchToEdit);
     });
   }
 
@@ -470,7 +476,7 @@ export default class InlineAnnotationsPlugin extends Plugin {
     }
     const ann = findAnnotationById(await this.getDoc(file), id);
     if (!ann) return;
-    new NoteModal(this.app, "Edit annotation", ann.note, ann.color, (note, color) => {
+    new NoteModal(this.app, t.editAnnotation, ann.note, ann.color, (note, color) => {
       void this.mutate(file, (doc) => {
         const a = findAnnotationById(doc, id);
         return a ? updateAnnotationChanges(a, { note, color }) : null;
@@ -498,7 +504,7 @@ export default class InlineAnnotationsPlugin extends Plugin {
     for (const c of COLORS) {
       menu.addItem((i) =>
         i
-          .setTitle(c.label + (c.key === current ? "  ✓" : ""))
+          .setTitle(colorLabel(c.key) + (c.key === current ? "  ✓" : ""))
           .setIcon("circle")
           .onClick(() => onPick(c.key)),
       );
@@ -509,23 +515,23 @@ export default class InlineAnnotationsPlugin extends Plugin {
     const panel = this.margin.panelForFile(file.path);
     const resolved = panel?.find(id)?.resolved ?? false;
     if (panel) {
-      menu.addItem((i) => i.setTitle("Reply to annotation").setIcon("message-square").onClick(() => panel.focusReply(id)));
+      menu.addItem((i) => i.setTitle(t.replyToAnnotation).setIcon("message-square").onClick(() => panel.focusReply(id)));
     }
     menu.addItem((i) =>
       i
-        .setTitle(resolved ? "Unresolve" : "Resolve annotation")
+        .setTitle(resolved ? t.unresolve : t.resolveAnnotation)
         .setIcon(resolved ? "rotate-ccw" : "check")
         .onClick(() => void this.updateAnnotation(file, id, (a) => ({ resolved: !a.resolved }))),
     );
-    menu.addItem((i) => i.setTitle("Edit annotation").setIcon("pencil").onClick(() => void this.editAnnotation(file, id)));
+    menu.addItem((i) => i.setTitle(t.editAnnotation).setIcon("pencil").onClick(() => void this.editAnnotation(file, id)));
     menu.addItem((i) => {
-      i.setTitle("Change annotation color").setIcon("palette");
+      i.setTitle(t.changeAnnotationColor).setIcon("palette");
       const sub = (i as unknown as { setSubmenu?: () => Menu }).setSubmenu?.();
       if (sub) this.addColorItems(sub, (c) => void this.updateAnnotation(file, id, { color: c }));
       else i.onClick(() => this.showColorMenu(file, id));
     });
     menu.addItem((i) =>
-      i.setTitle("Delete annotation").setIcon("trash").onClick(() => void this.deleteAnnotation(file, id)),
+      i.setTitle(t.deleteAnnotation).setIcon("trash").onClick(() => void this.deleteAnnotation(file, id)),
     );
   }
 
@@ -614,7 +620,7 @@ export default class InlineAnnotationsPlugin extends Plugin {
     marker.addClass("ann-btn");
     marker.setText("💬");
     marker.setAttribute("role", "button");
-    marker.setAttribute("aria-label", "View annotation");
+    marker.setAttribute("aria-label", t.viewAnnotation);
     marker.addEventListener("click", (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
@@ -646,12 +652,12 @@ export default class InlineAnnotationsPlugin extends Plugin {
 
     if (file) {
       const actions = pop.createDiv({ cls: "ann-popover-actions" });
-      const edit = actions.createEl("button", { text: "Edit" });
+      const edit = actions.createEl("button", { text: t.edit });
       edit.addEventListener("click", () => {
         this.closePopover();
         void this.editAnnotation(file, id);
       });
-      const del = actions.createEl("button", { text: "Delete" });
+      const del = actions.createEl("button", { text: t.delete });
       del.addEventListener("click", () => {
         this.closePopover();
         void this.deleteAnnotation(file, id);
@@ -707,7 +713,7 @@ class AnnotationSettingTab extends PluginSettingTab {
     type Tab = { searchComponent?: { setValue(v: string): void; onChanged?(): void } };
     const setting = (this.app as unknown as { setting?: { open(): void; openTabById(id: string): Tab | undefined } }).setting;
     if (!setting) {
-      new Notice("Open Settings → Hotkeys and search for \"annotation\" manually");
+      new Notice(t.openHotkeyManually);
       return;
     }
     setting.open();
@@ -721,14 +727,32 @@ class AnnotationSettingTab extends PluginSettingTab {
     containerEl.empty();
 
     containerEl.createEl("p", {
-      text: "Inserts annotation markers directly into the Markdown source: select text, press the hotkey, write the comment. Reading view shows only the highlight and a 💬 button; AI agents see every annotation by reading the source file.",
+      text: t.settingsIntro,
     });
 
     new Setting(containerEl)
-      .setName("Default annotation color")
-      .setDesc("Color preselected in the add-annotation dialog; each annotation can be changed individually afterwards.")
+      .setName(t.languageName)
+      .setDesc(t.languageDesc)
       .addDropdown((d) => {
-        for (const c of COLORS) d.addOption(c.key, c.label);
+        d.addOption("auto", t.langAuto)
+          .addOption("zh", t.langZh)
+          .addOption("en", t.langEn)
+          .setValue(this.plugin.settings.language)
+          .onChange(async (v) => {
+            const lang = v as "auto" | Locale;
+            this.plugin.settings.language = lang;
+            await this.plugin.saveSettings();
+            const obsidianLang = moment.locale();
+            setLocale(lang === "auto" ? (obsidianLang.startsWith("zh") ? "zh" : "en") : lang);
+            this.display();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName(t.defaultColorName)
+      .setDesc(t.defaultColorDesc)
+      .addDropdown((d) => {
+        for (const c of COLORS) d.addOption(c.key, colorLabel(c.key));
         d.setValue(this.plugin.settings.defaultColor).onChange(async (v) => {
           this.plugin.settings.defaultColor = v;
           await this.plugin.saveSettings();
@@ -736,8 +760,8 @@ class AnnotationSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("Author name")
-      .setDesc("Shown on annotations and replies; leave empty to show \"Me\".")
+      .setName(t.authorNameName)
+      .setDesc(t.authorNameDesc)
       .addText((t) =>
         t.setValue(this.plugin.settings.author).onChange(async (v) => {
           this.plugin.settings.author = v;
@@ -746,8 +770,8 @@ class AnnotationSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Margin follows the text")
-      .setDesc("On: annotation cards sit beside the text they annotate and scroll with it (the margin can scroll on its own when there are many). Off: the margin lists annotations in note order; click one to jump to its text.")
+      .setName(t.followName)
+      .setDesc(t.followDesc)
       .addToggle((t) =>
         t.setValue(this.plugin.settings.follow).onChange(async (v) => {
           this.plugin.settings.follow = v;
@@ -757,8 +781,8 @@ class AnnotationSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Hide annotation markers in live preview")
-      .setDesc("Hides annotation markers and the AI agent guide in the note body (live preview only; source mode always shows the raw text).")
+      .setName(t.hideMarkupName)
+      .setDesc(t.hideMarkupDesc)
       .addToggle((t) =>
         t.setValue(this.plugin.settings.hideMarkup).onChange(async (v) => {
           this.plugin.settings.hideMarkup = v;
@@ -768,19 +792,19 @@ class AnnotationSettingTab extends PluginSettingTab {
       );
 
     const hk = new Setting(containerEl)
-      .setName("Add-annotation hotkey")
-      .setDesc("Hotkeys are managed by Obsidian. The button opens the Hotkeys settings filtered to this plugin's commands (add annotation, delete selected annotation, open/close the margin).");
+      .setName(t.hotkeyName)
+      .setDesc(t.hotkeyDesc);
     hk.controlEl.createSpan({ cls: "ann-hotkey-label", text: this.plugin.hotkeyText() });
-    hk.addButton((b) => b.setButtonText("Set hotkey").onClick(() => this.openHotkeySettings()));
+    hk.addButton((b) => b.setButtonText(t.setHotkey).onClick(() => this.openHotkeySettings()));
 
-    new Setting(containerEl).setName("How to use").setHeading();
+    new Setting(containerEl).setName(t.howToUse).setHeading();
     const ul = containerEl.createEl("ul");
     [
-      "Select text → press the Add-annotation hotkey (bind it first under Settings → Hotkeys) or right-click → Add annotation → type the comment in the margin → ⌘/Ctrl + Enter to save.",
-      "Context menu: Add annotation when text is selected; Edit / Change color / Delete when the cursor is inside an annotation; right-clicking a highlight works the same in reading view.",
-      "Each annotation in the margin shows author and time, and supports reply, resolve / unresolve, edit, recolor, and delete; cards scroll with the text. The margin lives in Obsidian's right sidebar; the 💬 ribbon icon opens/closes it.",
-      "Annotations can span lines, paragraphs, and lists. Table cells can be annotated; selecting inside a code block annotates the whole block.",
-      "In the source file an annotation is a pair of empty <span> markers (start + end, comment on the end marker); AI agents can work with them by reading the file.",
+      t.usage1,
+      t.usage2,
+      t.usage3,
+      t.usage4,
+      t.usage5,
     ].forEach((t) => ul.createEl("li", { text: t }));
   }
 }
