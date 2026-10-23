@@ -192,6 +192,13 @@ export default class InlineAnnotationsPlugin extends Plugin {
     );
     this.addSettingTab(new AnnotationSettingTab(this.app, this));
     this.addRibbonIcon("message-square", "批注栏", () => void this.toggleMargin());
+    this.addRibbonIcon("message-square-plus", "在光标处添加批注", () => {
+      const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+      if (view?.file && view.getMode() === "source") {
+        return void this.addAnnotation(view.editor, view.file);
+      }
+      new Notice("请先切换到编辑模式,并选中要批注的文字");
+    });
 
     this.addCommand({
       id: "add-annotation",
