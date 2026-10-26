@@ -2,6 +2,7 @@ import {
   App,
   Editor,
   MarkdownPostProcessorContext,
+  MarkdownRenderer,
   MarkdownView,
   Menu,
   Modal,
@@ -642,7 +643,8 @@ export default class InlineAnnotationsPlugin extends Plugin {
     const pop = doc.body.createDiv({ cls: "ann-popover" });
     pop.dataset.annId = id;
     pop.setCssProps({ "--ann-pop-color": COLORS.find((c) => c.key === normalizeColor(anchor.dataset.color))?.css ?? "" });
-    pop.createDiv({ cls: "ann-popover-body", text: note });
+    const body = pop.createDiv({ cls: "ann-popover-body" });
+    void MarkdownRenderer.render(this.app, note, body, file?.path ?? "", this);
 
     if (file) {
       const actions = pop.createDiv({ cls: "ann-popover-actions" });

@@ -337,3 +337,29 @@ span.ann-s {
 }
 
 .ann-margin:focus { outline: none; }
+
+/* Rendered markdown in comments and replies */
+.ann-card-note p,
+.ann-reply-text p,
+.ann-popover-body p {
+    margin: 0 0 0.35em;
+}
+.ann-card-note p:last-child,
+.ann-reply-text p:last-child,
+.ann-popover-body p:last-child {
+    margin-bottom: 0;
+}
+.ann-card-note ul,
+.ann-card-note ol,
+.ann-reply-text ul,
+.ann-reply-text ol,
+.ann-popover-body ul,
+.ann-popover-body ol {
+    margin: 0.2em 0;
+    padding-inline-start: 1.2em;
+}
+.ann-card-note :is(ul, ol):last-child,
+.ann-reply-text :is(ul, ol):last-child,
+.ann-popover-body :is(ul, ol):last-child {
+    margin-bottom: 0;
+}
