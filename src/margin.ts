@@ -1,5 +1,5 @@
 import { MarkdownView, Menu, Notice, TFile, setIcon } from "obsidian";
-import { t } from "./i18n";
+import { fmt, t } from "./i18n";
 import type { EditorView } from "@codemirror/view";
 import {
   Annotation,
@@ -13,6 +13,7 @@ import {
   withGuide,
   wrapSelection,
 } from "./core";
+import { annotationKey, commentItems, replyKey } from "./unread";
 import type InlineAnnotationsPlugin from "./main";
 
 // WPS-style comment margin: one panel per Markdown view, cards sit next to the text they annotate
@@ -43,6 +44,14 @@ export class MarginPanel {
   private draftEl: HTMLElement | null = null;
   private draftCleanup: (() => void) | null = null;
   private cards = new Map<string, HTMLElement>();
+  /** Comment keys that were unread when this note was shown; a card's "New" badges last until it's interacted with. */
+  private fresh = new Set<string>();
+  /** The note has unread comments but the margin was hidden, so they haven't been marked seen yet. */
+  private unseenWhileHidden = false;
+  /** "N new in other notes" bar below the scrolling margin (Obsidian's notices cover the top of the right
+   *  sidebar). Cards are positioned relative to the margin itself, so the bar doesn't misalign them. */
+  private pill: HTMLElement;
+  private offInbox: () => void;
   private ro: ResizeObserver;
   view: MarkdownView | null = null;
   private onScroll = () => this.schedule();
@@ -57,6 +66,10 @@ export class MarginPanel {
   ) {
     this.el = host.createDiv({ cls: "ann-margin" });
     this.track = this.el.createDiv({ cls: "ann-track" });
+    this.pill = host.createDiv({ cls: "ann-inbox-pill" });
+    this.pill.addEventListener("click", () => plugin.inbox.openList());
+    this.offInbox = plugin.inbox.onChange(() => this.updatePill());
+    this.updatePill();
     this.ro = new ResizeObserver(() => this.schedule());
     this.ro.observe(this.el);
     // Follow mode: scrolling the panel scrolls the note; the panel itself only scrolls once the note hits its end.
@@ -123,6 +136,8 @@ export class MarginPanel {
   }
 
   destroy() {
+    this.offInbox();
+    this.pill.remove();
     this.draftCleanup?.();
     this.unlisten();
     this.ro.disconnect();
@@ -161,6 +176,7 @@ export class MarginPanel {
       this.editingId = null;
       this.activeId = null;
       this.lastTrackH = "";
+      this.fresh = new Set();
       force = true;
     }
     const doc = await this.plugin.getDoc(file);
@@ -172,12 +188,56 @@ export class MarginPanel {
       this.schedule();
       return;
     }
+    this.claimUnread(file.path);
     this.render(file);
+    this.updatePill();
+  }
+
+  /** Hidden in a collapsed sidebar (or a closed drawer on mobile): cards there haven't been seen. */
+  isVisible(): boolean {
+    const ws = this.plugin.app.workspace;
+    for (const split of [ws.leftSplit, ws.rightSplit]) {
+      // containerEl exists on both sidedocks and mobile drawers but isn't in the public typings.
+      const el = (split as unknown as { containerEl?: HTMLElement } | null)?.containerEl;
+      if (split?.collapsed && el?.contains(this.el)) return false;
+    }
+    return this.el.isShown();
+  }
+
+  /** Unread comments in the shown note get a "New" badge and count as seen from now on. */
+  private claimUnread(path: string) {
+    const unread = commentItems(path, this.anns).filter((i) => this.plugin.inbox.isUnread(i));
+    this.unseenWhileHidden = unread.length > 0 && !this.isVisible();
+    if (!unread.length || this.unseenWhileHidden) return;
+    unread.forEach((i) => this.fresh.add(i.key));
+    this.plugin.inbox.markSeen(unread.map((i) => i.key));
+  }
+
+  /** Desktop's status bar floats over the bottom of the right sidebar: lift the bar above it. */
+  private clearStatusBar() {
+    const host = this.pill.parentElement;
+    const bar = this.pill.ownerDocument.querySelector<HTMLElement>(".status-bar");
+    let gap = 0;
+    if (host && bar?.isShown()) {
+      const h = host.getBoundingClientRect();
+      const b = bar.getBoundingClientRect();
+      if (b.left < h.right && b.right > h.left && b.top < h.bottom) gap = Math.ceil(h.bottom - b.top);
+    }
+    this.pill.setCssProps({ "--ann-pill-clear": `${gap}px` });
+  }
+
+  private updatePill() {
+    const n = this.plugin.inbox.unread(this.filePath || undefined).length;
+    this.pill.toggle(n > 0);
+    this.pill.setText(n === 1 ? t.unreadElsewhereOne : fmt(t.unreadElsewhereMany, { n }));
+    if (n > 0) this.clearStatusBar();
   }
 
   /** Called periodically: catches source/reading mode switches and lazily rendered reading-mode sections. */
   tick() {
+    if (this.pill.isShown()) this.clearStatusBar(); // the status bar's width changes with its contents
     if (this.view && this.view.getMode() !== this.mode) void this.refresh(true);
+    else if (this.unseenWhileHidden && this.isVisible()) void this.refresh(true);
     else this.schedule();
   }
 
@@ -196,11 +256,27 @@ export class MarginPanel {
   }
 
   setActive(id: string | null) {
+    // Selecting a card (clicking it, the cursor entering its text, replying) means it's been read.
+    if (id) this.clearNew(id);
     if (this.activeId === id) return;
     this.activeId = id;
     this.cards.forEach((c, cid) => c.toggleClass("is-active", cid === id));
     if (id && !this.follow) this.cards.get(id)?.scrollIntoView({ block: "nearest" });
     this.schedule();
+  }
+
+  /** Drop the "New" badges of one annotation and its replies, in place (no re-render). */
+  private clearNew(id: string) {
+    const a = this.find(id);
+    if (!a) return;
+    let changed = this.fresh.delete(annotationKey(a));
+    for (const r of a.replies) changed = this.fresh.delete(replyKey(a, r)) || changed;
+    if (!changed) return;
+    const card = this.cards.get(id);
+    if (!card) return;
+    card.removeClass("is-new");
+    card.querySelectorAll(".ann-badge-new").forEach((b) => b.remove());
+    card.querySelectorAll(".ann-reply.is-new").forEach((r) => r.removeClass("is-new"));
   }
 
   /** Cursor moved in the editor: activate the innermost annotation under it. */
@@ -290,8 +366,13 @@ export class MarginPanel {
     this.el.toggleClass("ann-follow", this.follow);
     this.cards.clear();
     this.draftEl = null;
+    // Opened from the unread list or a notice: select that annotation and scroll the note to it.
+    const focusId = this.plugin.margin.takePendingFocus(file.path);
+    const focus = focusId ? this.find(focusId) : undefined;
+    if (focus) this.activeId = focus.id;
     if (this.draft) this.draftEl = this.renderDraft(this.draft);
     for (const a of this.anns) this.cards.set(a.id, this.renderCard(file, a));
+    if (focus) this.reveal(focus);
     if (!this.draft && this.anns.length === 0) {
       this.track.createDiv({ cls: "ann-empty", text: t.noAnnotationsYet });
     }
@@ -370,6 +451,9 @@ export class MarginPanel {
     const time = a.time || `${t.approxPrefix}${nowStamp(new Date(file.stat.mtime))}`;
     const { head, name } = this.renderHead(card, a.author, time, a.color);
     if (a.resolved) name.createSpan({ cls: "ann-badge", text: t.resolvedBadge });
+    const isNew = this.fresh.has(annotationKey(a));
+    card.toggleClass("is-new", isNew || a.replies.some((r) => this.fresh.has(replyKey(a, r))));
+    if (isNew) name.createSpan({ cls: "ann-badge ann-badge-new", text: t.newBadge });
     const more = head.createEl("button", { cls: "ann-icon-btn ann-more", attr: { "aria-label": t.more } });
     setIcon(more, "more-horizontal");
     more.addEventListener("click", (e) => {
@@ -414,6 +498,10 @@ export class MarginPanel {
         const item = list.createDiv({ cls: "ann-reply" });
         const top = item.createDiv({ cls: "ann-reply-head" });
         top.createSpan({ cls: "ann-author", text: r.author || t.replyFallback });
+        if (this.fresh.has(replyKey(a, r))) {
+          item.addClass("is-new");
+          top.createSpan({ cls: "ann-badge ann-badge-new", text: t.newBadge });
+        }
         top.createSpan({ cls: "ann-time", text: r.time || `${t.approxPrefix}${nowStamp(new Date(file.stat.mtime))}` });
         const del = top.createEl("button", { cls: "ann-icon-btn ann-reply-del", attr: { "aria-label": t.deleteReply } });
         setIcon(del, "x");
@@ -609,6 +697,7 @@ export class MarginPanel {
 
 export class MarginManager {
   private panel: MarginPanel | null = null;
+  private pendingFocus: { path: string; id: string } | null = null;
 
   constructor(private plugin: InlineAnnotationsPlugin) {}
 
@@ -651,6 +740,19 @@ export class MarginManager {
     await this.plugin.activateView(true);
     this.panel?.bind(view);
     return this.panel;
+  }
+
+  /** Select annotation `id` the next time the margin renders `path` (it may not be open yet). */
+  focusWhenShown(path: string, id: string) {
+    this.pendingFocus = { path, id };
+    this.sync(true);
+  }
+
+  takePendingFocus(path: string): string | null {
+    if (this.pendingFocus?.path !== path) return null;
+    const id = this.pendingFocus.id;
+    this.pendingFocus = null;
+    return id;
   }
 
   refreshFile(path: string) {

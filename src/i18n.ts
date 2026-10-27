@@ -60,6 +60,21 @@ const zh = {
     send: "发送",
     notSet: "未设置",
 
+    // Unread comments
+    newBadge: "新",
+    showUnread: "显示未读批注",
+    markAllRead: "全部标为已读",
+    markedAllRead: "已全部标为已读",
+    unreadPlaceholder: "未读批注(输入可筛选)",
+    noUnread: "没有未读批注",
+    unreadElsewhereOne: "其他笔记中有 1 条新批注",
+    unreadElsewhereMany: "其他笔记中有 {n} 条新批注",
+    unreadOnOpenOne: "有 1 条未读批注,点击查看",
+    unreadOnOpenMany: "有 {n} 条未读批注,点击查看",
+    newCommentFrom: "{author} 在「{note}」中添加了批注",
+    newReplyFrom: "{author} 在「{note}」中答复了批注",
+    newCommentsMany: "{n} 条新批注",
+
     // Settings
     languageName: "界面语言",
     languageDesc: "跟随 Obsidian 的界面语言;也可以手动选择。",
@@ -75,6 +90,9 @@ const zh = {
     followName: "批注跟随正文",
     followDesc:
         "开启:批注卡片紧贴对应原文,随正文滚动(批注较多时可单独上下滚动批注栏)。关闭:批注栏按原文顺序列表显示,点击批注跳转到原文。",
+    notifyName: "新批注提醒",
+    notifyDesc:
+        "他人的批注或答复同步进来时弹出提醒(桌面端在 Obsidian 处于后台时使用系统通知),打开 Obsidian 时提示未读数量。根据上面的「批注人名称」区分自己和他人的批注。",
     hideMarkupName: "实时预览中隐藏批注标记",
     hideMarkupDesc: "隐藏正文里的批注标记和给 AI agent 的说明(只影响实时预览;源码模式始终显示原文)。",
     hotkeyName: "添加批注快捷键",
@@ -151,6 +169,21 @@ const en: typeof zh = {
         send: "Send",
         notSet: "not set",
 
+        // Unread comments
+        newBadge: "New",
+        showUnread: "Show unread comments",
+        markAllRead: "Mark all read",
+        markedAllRead: "All comments marked as read",
+        unreadPlaceholder: "Unread comments (type to filter)",
+        noUnread: "No unread comments",
+        unreadElsewhereOne: "1 new comment in another note",
+        unreadElsewhereMany: "{n} new comments in other notes",
+        unreadOnOpenOne: "1 unread comment. Click to view.",
+        unreadOnOpenMany: "{n} unread comments. Click to view.",
+        newCommentFrom: "{author} commented on {note}",
+        newReplyFrom: "{author} replied on {note}",
+        newCommentsMany: "{n} new comments",
+
         // Settings
         languageName: "Language",
         languageDesc: "Follow Obsidian's display language, or choose manually.",
@@ -166,6 +199,9 @@ const en: typeof zh = {
         followName: "Margin follows the text",
         followDesc:
             "On: annotation cards sit beside the text they annotate and scroll with it (the margin can scroll on its own when there are many). Off: the margin lists annotations in note order; click one to jump to its text.",
+        notifyName: "Notify about new comments",
+        notifyDesc:
+            "Pop up a notice when someone else's comment or reply syncs in (on desktop, a system notification while Obsidian is in the background), and show the unread count when Obsidian opens. Your own comments are recognized by the author name above.",
         hideMarkupName: "Hide annotation markers in live preview",
         hideMarkupDesc: "Hides annotation markers and the AI agent guide in the note body (live preview only; source mode always shows the raw text).",
         hotkeyName: "Add-annotation hotkey",
@@ -201,6 +237,11 @@ export let t: typeof zh = zh;
 
 export function setLocale(locale: Locale) {
     t = locale === "en" ? en : zh;
+}
+
+/** Fill {name} placeholders in a string from the active dictionary. */
+export function fmt(s: string, vars: Record<string, string | number>): string {
+    return s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
 }
 
 /** Display name of a highlight color, falling back to the key itself. */

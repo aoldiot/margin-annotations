@@ -40,7 +40,9 @@ import {
 } from "./core";
 import { colorLabel, setLocale, t } from "./i18n";
 import type { Locale } from "./i18n";
+import { Inbox } from "./inbox";
 import { MarginManager } from "./margin";
+import type { CommentItem } from "./unread";
 import { AnnotationSidebarView, VIEW_TYPE } from "./view";
 
 interface Settings {
@@ -49,8 +51,23 @@ interface Settings {
   author: string;
   follow: boolean;
   hideMarkup: boolean;
+  /** Pop up new comments from other annotators as they sync in. */
+  notify: boolean;
+  /** Set once this device has marked the comments that existed before unread tracking as seen. */
+  unreadBaseline: boolean;
+  /** Keys of comments seen on this device (see unread.ts). Lives in data.json, so each device keeps its own. */
+  seen: string[];
 }
-const DEFAULT_SETTINGS: Settings = { language: "auto", defaultColor: DEFAULT_COLOR, author: "", follow: true, hideMarkup: true };
+const DEFAULT_SETTINGS: Settings = {
+  language: "auto",
+  defaultColor: DEFAULT_COLOR,
+  author: "",
+  follow: true,
+  hideMarkup: true,
+  notify: true,
+  unreadBaseline: false,
+  seen: [],
+};
 
 // ---------------------------------------------------------------------------
 // Note + color dialog
@@ -180,11 +197,15 @@ export default class InlineAnnotationsPlugin extends Plugin {
   settings: Settings = { ...DEFAULT_SETTINGS };
   private popover: HTMLElement | null = null;
   private popoverCleanup: (() => void) | null = null;
+  /** Working copy of settings.seen; saveSettings() writes it back. */
+  seen = new Set<string>();
+  inbox = new Inbox(this);
   margin = new MarginManager(this);
 
   async onload() {
     this.settings = { ...DEFAULT_SETTINGS, ...((await this.loadData()) as Partial<Settings> | null) };
     this.settings.defaultColor = normalizeColor(this.settings.defaultColor);
+    this.seen = new Set(Array.isArray(this.settings.seen) ? this.settings.seen : []);
     const obsidianLang = moment.locale();
     setLocale(this.settings.language === "auto" ? (obsidianLang.startsWith("zh") ? "zh" : "en") : this.settings.language);
 
@@ -229,6 +250,17 @@ export default class InlineAnnotationsPlugin extends Plugin {
       name: t.toggleMargin,
       callback: () => void this.toggleMargin(),
     });
+    this.addCommand({
+      id: "show-unread",
+      name: t.showUnread,
+      callback: () => this.inbox.openList(),
+    });
+    this.addCommand({
+      id: "mark-all-read",
+      name: t.markAllRead,
+      callback: () => this.inbox.markAllRead(),
+    });
+    this.inbox.attachStatusBar(this.addStatusBarItem());
 
     this.registerEvent(
       this.app.workspace.on("editor-menu", (menu, editor, info) => {
@@ -251,7 +283,16 @@ export default class InlineAnnotationsPlugin extends Plugin {
     this.registerEvent(this.app.workspace.on("editor-change", debounced));
     this.registerEvent(this.app.vault.on("modify", (f) => this.margin.refreshFile(f.path)));
     this.registerInterval(window.setInterval(() => this.margin.tick(), 1000));
-    this.app.workspace.onLayoutReady(() => this.margin.sync(true));
+    this.app.workspace.onLayoutReady(() => {
+      this.margin.sync(true);
+      // Watch the vault only after the startup indexing, so files Obsidian loads at launch aren't "new".
+      void this.inbox.init().then(() => {
+        this.registerEvent(this.app.vault.on("modify", (f) => void this.inbox.onModify(f)));
+        this.registerEvent(this.app.vault.on("create", (f) => void this.inbox.onModify(f)));
+        this.registerEvent(this.app.vault.on("rename", (f, old) => this.inbox.onRename(f, old)));
+        this.registerEvent(this.app.vault.on("delete", (f) => this.inbox.onDelete(f)));
+      });
+    });
   }
 
   /** Toggle the body class that hides annotation markers and the agent guide in live preview. */
@@ -260,6 +301,7 @@ export default class InlineAnnotationsPlugin extends Plugin {
   }
 
   onunload() {
+    this.inbox.flush();
     document.body.removeClass("ann-hide-markup");
     this.closePopover();
     this.margin.detach();
@@ -300,7 +342,19 @@ export default class InlineAnnotationsPlugin extends Plugin {
   }
 
   async saveSettings() {
+    this.settings.seen = [...this.seen];
     await this.saveData(this.settings);
+  }
+
+  /** Open the note holding `item` and select its annotation in the margin. */
+  async openComment(item: CommentItem) {
+    const file = this.app.vault.getAbstractFileByPath(item.path);
+    if (!(file instanceof TFile)) return;
+    const open = this.findAnyView(file);
+    if (open) this.app.workspace.setActiveLeaf(open.leaf, { focus: true });
+    else await this.app.workspace.getLeaf(false).openFile(file);
+    this.margin.focusWhenShown(file.path, item.annId);
+    await this.activateView(true);
   }
 
   // --- file access --------------------------------------------------------
@@ -765,6 +819,16 @@ class AnnotationSettingTab extends PluginSettingTab {
       .addText((t) =>
         t.setValue(this.plugin.settings.author).onChange(async (v) => {
           this.plugin.settings.author = v;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName(t.notifyName)
+      .setDesc(t.notifyDesc)
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.notify).onChange(async (v) => {
+          this.plugin.settings.notify = v;
           await this.plugin.saveSettings();
         }),
       );
