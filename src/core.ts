@@ -6,12 +6,12 @@
 // The start marker opens the range, the end marker closes it and carries the note.
 
 export const COLORS = [
-  { key: "yellow", label: "黄色", css: "#ffd000" },
-  { key: "green", label: "绿色", css: "#3ec06a" },
-  { key: "blue", label: "蓝色", css: "#4a9eff" },
-  { key: "pink", label: "粉色", css: "#ff6fa5" },
-  { key: "purple", label: "紫色", css: "#a67cff" },
-  { key: "orange", label: "橙色", css: "#ff8a3d" },
+  { key: "yellow", label: "Yellow", css: "#ffd000" },
+  { key: "green", label: "Green", css: "#3ec06a" },
+  { key: "blue", label: "Blue", css: "#4a9eff" },
+  { key: "pink", label: "Pink", css: "#ff6fa5" },
+  { key: "purple", label: "Purple", css: "#a67cff" },
+  { key: "orange", label: "Orange", css: "#ff8a3d" },
 ] as const;
 
 export const DEFAULT_COLOR = "yellow";

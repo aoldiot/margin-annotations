@@ -1,4 +1,5 @@
 import { MarkdownView, Menu, Notice, TFile, setIcon } from "obsidian";
+import { fmt, t } from "./i18n";
 import type { EditorView } from "@codemirror/view";
 import {
   Annotation,
@@ -12,6 +13,7 @@ import {
   withGuide,
   wrapSelection,
 } from "./core";
+import { annotationKey, commentItems, replyKey } from "./unread";
 import type InlineAnnotationsPlugin from "./main";
 
 // WPS-style comment margin: one panel per Markdown view, cards sit next to the text they annotate
@@ -42,6 +44,14 @@ export class MarginPanel {
   private draftEl: HTMLElement | null = null;
   private draftCleanup: (() => void) | null = null;
   private cards = new Map<string, HTMLElement>();
+  /** Comment keys that were unread when this note was shown; a card's "New" badges last until it's interacted with. */
+  private fresh = new Set<string>();
+  /** The note has unread comments but the margin was hidden, so they haven't been marked seen yet. */
+  private unseenWhileHidden = false;
+  /** "N new in other notes" bar below the scrolling margin (Obsidian's notices cover the top of the right
+   *  sidebar). Cards are positioned relative to the margin itself, so the bar doesn't misalign them. */
+  private pill: HTMLElement;
+  private offInbox: () => void;
   private ro: ResizeObserver;
   view: MarkdownView | null = null;
   private onScroll = () => this.schedule();
@@ -56,6 +66,10 @@ export class MarginPanel {
   ) {
     this.el = host.createDiv({ cls: "ann-margin" });
     this.track = this.el.createDiv({ cls: "ann-track" });
+    this.pill = host.createDiv({ cls: "ann-inbox-pill" });
+    this.pill.addEventListener("click", () => plugin.inbox.openList());
+    this.offInbox = plugin.inbox.onChange(() => this.updatePill());
+    this.updatePill();
     this.ro = new ResizeObserver(() => this.schedule());
     this.ro.observe(this.el);
     // Follow mode: scrolling the panel scrolls the note; the panel itself only scrolls once the note hits its end.
@@ -122,6 +136,8 @@ export class MarginPanel {
   }
 
   destroy() {
+    this.offInbox();
+    this.pill.remove();
     this.draftCleanup?.();
     this.unlisten();
     this.ro.disconnect();
@@ -151,7 +167,7 @@ export class MarginPanel {
       this.draft = null;
       this.el.empty();
       this.track = this.el.createDiv({ cls: "ann-track" });
-      this.track.createDiv({ cls: "ann-empty", text: "请先打开一篇 Markdown 笔记。" });
+      this.track.createDiv({ cls: "ann-empty", text: t.openNoteFirst });
       return;
     }
     if (file.path !== this.filePath) {
@@ -160,6 +176,7 @@ export class MarginPanel {
       this.editingId = null;
       this.activeId = null;
       this.lastTrackH = "";
+      this.fresh = new Set();
       force = true;
     }
     const doc = await this.plugin.getDoc(file);
@@ -171,12 +188,56 @@ export class MarginPanel {
       this.schedule();
       return;
     }
+    this.claimUnread(file.path);
     this.render(file);
+    this.updatePill();
+  }
+
+  /** Hidden in a collapsed sidebar (or a closed drawer on mobile): cards there haven't been seen. */
+  isVisible(): boolean {
+    const ws = this.plugin.app.workspace;
+    for (const split of [ws.leftSplit, ws.rightSplit]) {
+      // containerEl exists on both sidedocks and mobile drawers but isn't in the public typings.
+      const el = (split as unknown as { containerEl?: HTMLElement } | null)?.containerEl;
+      if (split?.collapsed && el?.contains(this.el)) return false;
+    }
+    return this.el.isShown();
+  }
+
+  /** Unread comments in the shown note get a "New" badge and count as seen from now on. */
+  private claimUnread(path: string) {
+    const unread = commentItems(path, this.anns).filter((i) => this.plugin.inbox.isUnread(i));
+    this.unseenWhileHidden = unread.length > 0 && !this.isVisible();
+    if (!unread.length || this.unseenWhileHidden) return;
+    unread.forEach((i) => this.fresh.add(i.key));
+    this.plugin.inbox.markSeen(unread.map((i) => i.key));
+  }
+
+  /** Desktop's status bar floats over the bottom of the right sidebar: lift the bar above it. */
+  private clearStatusBar() {
+    const host = this.pill.parentElement;
+    const bar = this.pill.ownerDocument.querySelector<HTMLElement>(".status-bar");
+    let gap = 0;
+    if (host && bar?.isShown()) {
+      const h = host.getBoundingClientRect();
+      const b = bar.getBoundingClientRect();
+      if (b.left < h.right && b.right > h.left && b.top < h.bottom) gap = Math.ceil(h.bottom - b.top);
+    }
+    this.pill.setCssProps({ "--ann-pill-clear": `${gap}px` });
+  }
+
+  private updatePill() {
+    const n = this.plugin.inbox.unread(this.filePath || undefined).length;
+    this.pill.toggle(n > 0);
+    this.pill.setText(n === 1 ? t.unreadElsewhereOne : fmt(t.unreadElsewhereMany, { n }));
+    if (n > 0) this.clearStatusBar();
   }
 
   /** Called periodically: catches source/reading mode switches and lazily rendered reading-mode sections. */
   tick() {
+    if (this.pill.isShown()) this.clearStatusBar(); // the status bar's width changes with its contents
     if (this.view && this.view.getMode() !== this.mode) void this.refresh(true);
+    else if (this.unseenWhileHidden && this.isVisible()) void this.refresh(true);
     else this.schedule();
   }
 
@@ -195,11 +256,27 @@ export class MarginPanel {
   }
 
   setActive(id: string | null) {
+    // Selecting a card (clicking it, the cursor entering its text, replying) means it's been read.
+    if (id) this.clearNew(id);
     if (this.activeId === id) return;
     this.activeId = id;
     this.cards.forEach((c, cid) => c.toggleClass("is-active", cid === id));
     if (id && !this.follow) this.cards.get(id)?.scrollIntoView({ block: "nearest" });
     this.schedule();
+  }
+
+  /** Drop the "New" badges of one annotation and its replies, in place (no re-render). */
+  private clearNew(id: string) {
+    const a = this.find(id);
+    if (!a) return;
+    let changed = this.fresh.delete(annotationKey(a));
+    for (const r of a.replies) changed = this.fresh.delete(replyKey(a, r)) || changed;
+    if (!changed) return;
+    const card = this.cards.get(id);
+    if (!card) return;
+    card.removeClass("is-new");
+    card.querySelectorAll(".ann-badge-new").forEach((b) => b.remove());
+    card.querySelectorAll(".ann-reply.is-new").forEach((r) => r.removeClass("is-new"));
   }
 
   /** Cursor moved in the editor: activate the innermost annotation under it. */
@@ -232,7 +309,7 @@ export class MarginPanel {
     if (!d || !file || !this.view) return;
     const text = note.trim();
     if (!text) {
-      new Notice("批注内容不能为空");
+      new Notice(t.commentEmpty);
       return;
     }
     const editor = this.view.editor;
@@ -241,7 +318,7 @@ export class MarginPanel {
     if (doc.slice(from, to) !== d.text) {
       const idx = doc.indexOf(d.text);
       if (idx < 0) {
-        new Notice("原文已被修改,请重新选择文字后再添加批注");
+        new Notice(t.textChanged);
         return;
       }
       from = idx;
@@ -253,7 +330,7 @@ export class MarginPanel {
       time: nowStamp(),
     });
     if (!changes) {
-      new Notice("选区内没有可批注的文字(选区跨单元格或跨行的表格不支持)");
+      new Notice(t.noTextInSelection);
       return;
     }
     this.draft = null;
@@ -289,10 +366,15 @@ export class MarginPanel {
     this.el.toggleClass("ann-follow", this.follow);
     this.cards.clear();
     this.draftEl = null;
+    // Opened from the unread list or a notice: select that annotation and scroll the note to it.
+    const focusId = this.plugin.margin.takePendingFocus(file.path);
+    const focus = focusId ? this.find(focusId) : undefined;
+    if (focus) this.activeId = focus.id;
     if (this.draft) this.draftEl = this.renderDraft(this.draft);
     for (const a of this.anns) this.cards.set(a.id, this.renderCard(file, a));
+    if (focus) this.reveal(focus);
     if (!this.draft && this.anns.length === 0) {
-      this.track.createDiv({ cls: "ann-empty", text: "这篇笔记还没有批注。选中文字后右键「添加批注」。" });
+      this.track.createDiv({ cls: "ann-empty", text: t.noAnnotationsYet });
     }
     this.el.scrollTop = scrollTop;
     this.schedule();
@@ -300,11 +382,11 @@ export class MarginPanel {
 
   private renderHead(card: HTMLElement, author: string, time: string, color: string) {
     const head = card.createDiv({ cls: "ann-card-head" });
-    const av = head.createDiv({ cls: "ann-avatar", text: (author || "我").slice(0, 1) });
+    const av = head.createDiv({ cls: "ann-avatar", text: (author || t.authorMe).slice(0, 1) });
     av.setCssProps({ background: colorCss(color) });
     const meta = head.createDiv({ cls: "ann-card-meta" });
     const name = meta.createDiv({ cls: "ann-author" });
-    name.createSpan({ text: author || "批注" });
+    name.createSpan({ text: author || t.authorFallback });
     if (time) meta.createDiv({ cls: "ann-time", text: time });
     return { head, name };
   }
@@ -315,7 +397,7 @@ export class MarginPanel {
     this.renderHead(card, this.plugin.author(), nowStamp(), d.color);
     card.createDiv({ cls: "ann-card-quote", text: d.text.replace(/\s+/g, " ").trim().slice(0, 60) });
 
-    const area = card.createEl("textarea", { cls: "ann-card-edit", attr: { placeholder: "写下批注…(⌘/Ctrl + Enter 保存)", rows: "3" } });
+    const area = card.createEl("textarea", { cls: "ann-card-edit", attr: { placeholder: t.writePlaceholder, rows: "3" } });
     const row = card.createDiv({ cls: "ann-color-row" });
     const swatches: HTMLElement[] = [];
     for (const c of COLORS) {
@@ -332,8 +414,8 @@ export class MarginPanel {
       swatches.push(sw);
     }
     const actions = card.createDiv({ cls: "ann-card-actions" });
-    const cancel = actions.createEl("button", { text: "取消" });
-    const save = actions.createEl("button", { text: "保存", cls: "mod-cta" });
+    const cancel = actions.createEl("button", { text: t.cancel });
+    const save = actions.createEl("button", { text: t.save, cls: "mod-cta" });
     cancel.addEventListener("click", () => this.cancelDraft());
     // Clicking anywhere outside the card saves the draft as long as something was written.
     const onDown = (e: MouseEvent) => {
@@ -366,10 +448,13 @@ export class MarginPanel {
     });
 
     // Annotations written before timestamps existed fall back to the note's last-modified time.
-    const time = a.time || `约 ${nowStamp(new Date(file.stat.mtime))}`;
+    const time = a.time || `${t.approxPrefix}${nowStamp(new Date(file.stat.mtime))}`;
     const { head, name } = this.renderHead(card, a.author, time, a.color);
-    if (a.resolved) name.createSpan({ cls: "ann-badge", text: "已解决" });
-    const more = head.createEl("button", { cls: "ann-icon-btn ann-more", attr: { "aria-label": "更多" } });
+    if (a.resolved) name.createSpan({ cls: "ann-badge", text: t.resolvedBadge });
+    const isNew = this.fresh.has(annotationKey(a));
+    card.toggleClass("is-new", isNew || a.replies.some((r) => this.fresh.has(replyKey(a, r))));
+    if (isNew) name.createSpan({ cls: "ann-badge ann-badge-new", text: t.newBadge });
+    const more = head.createEl("button", { cls: "ann-icon-btn ann-more", attr: { "aria-label": t.more } });
     setIcon(more, "more-horizontal");
     more.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -384,8 +469,8 @@ export class MarginPanel {
       const area = card.createEl("textarea", { cls: "ann-card-edit", attr: { rows: "3" } });
       area.value = a.note;
       const actions = card.createDiv({ cls: "ann-card-actions" });
-      const cancel = actions.createEl("button", { text: "取消" });
-      const save = actions.createEl("button", { text: "保存", cls: "mod-cta" });
+      const cancel = actions.createEl("button", { text: t.cancel });
+      const save = actions.createEl("button", { text: t.save, cls: "mod-cta" });
       const finish = () => {
         this.editingId = null;
         void this.refresh(true);
@@ -412,9 +497,13 @@ export class MarginPanel {
       a.replies.forEach((r, i) => {
         const item = list.createDiv({ cls: "ann-reply" });
         const top = item.createDiv({ cls: "ann-reply-head" });
-        top.createSpan({ cls: "ann-author", text: r.author || "回复" });
-        top.createSpan({ cls: "ann-time", text: r.time || `约 ${nowStamp(new Date(file.stat.mtime))}` });
-        const del = top.createEl("button", { cls: "ann-icon-btn ann-reply-del", attr: { "aria-label": "删除答复" } });
+        top.createSpan({ cls: "ann-author", text: r.author || t.replyFallback });
+        if (this.fresh.has(replyKey(a, r))) {
+          item.addClass("is-new");
+          top.createSpan({ cls: "ann-badge ann-badge-new", text: t.newBadge });
+        }
+        top.createSpan({ cls: "ann-time", text: r.time || `${t.approxPrefix}${nowStamp(new Date(file.stat.mtime))}` });
+        const del = top.createEl("button", { cls: "ann-icon-btn ann-reply-del", attr: { "aria-label": t.deleteReply } });
         setIcon(del, "x");
         del.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -427,8 +516,8 @@ export class MarginPanel {
     }
 
     const box = card.createDiv({ cls: "ann-reply-box" });
-    const input = box.createEl("textarea", { cls: "ann-reply-input", attr: { placeholder: "答复…", rows: "1" } });
-    const send = box.createEl("button", { text: "发送", cls: "mod-cta" });
+    const input = box.createEl("textarea", { cls: "ann-reply-input", attr: { placeholder: t.replyPlaceholder, rows: "1" } });
+    const send = box.createEl("button", { text: t.send, cls: "mod-cta" });
     const submit = async () => {
       const text = input.value.trim();
       if (!text) return;
@@ -455,25 +544,25 @@ export class MarginPanel {
   private showMenu(file: TFile, a: Annotation, e: MouseEvent) {
     const plugin = this.plugin;
     const menu = new Menu();
-    menu.addItem((i) => i.setTitle("答复").setIcon("message-square").onClick(() => this.focusReply(a.id)));
+    menu.addItem((i) => i.setTitle(t.reply).setIcon("message-square").onClick(() => this.focusReply(a.id)));
     menu.addItem((i) =>
       i
-        .setTitle(a.resolved ? "取消解决" : "解决")
+        .setTitle(a.resolved ? t.unresolve : t.resolveAnnotation)
         .setIcon(a.resolved ? "rotate-ccw" : "check")
         .onClick(async () => {
           await plugin.updateAnnotation(file, a.id, (cur) => ({ resolved: !cur.resolved }));
           void this.refresh(true);
         }),
     );
-    menu.addItem((i) => i.setTitle("编辑").setIcon("pencil").onClick(() => this.startEdit(a.id)));
+    menu.addItem((i) => i.setTitle(t.edit).setIcon("pencil").onClick(() => this.startEdit(a.id)));
     menu.addItem((i) => {
-      i.setTitle("更改颜色").setIcon("palette");
+      i.setTitle(t.changeColor).setIcon("palette");
       const sub = (i as unknown as { setSubmenu?: () => Menu }).setSubmenu?.();
       if (sub) plugin.addColorItems(sub, (c) => void plugin.updateAnnotation(file, a.id, { color: c }), a.color);
     });
     menu.addItem((i) =>
       i
-        .setTitle("删除")
+        .setTitle(t.delete)
         .setIcon("trash")
         .onClick(async () => {
           await plugin.deleteAnnotation(file, a.id);
@@ -608,6 +697,7 @@ export class MarginPanel {
 
 export class MarginManager {
   private panel: MarginPanel | null = null;
+  private pendingFocus: { path: string; id: string } | null = null;
 
   constructor(private plugin: InlineAnnotationsPlugin) {}
 
@@ -650,6 +740,19 @@ export class MarginManager {
     await this.plugin.activateView(true);
     this.panel?.bind(view);
     return this.panel;
+  }
+
+  /** Select annotation `id` the next time the margin renders `path` (it may not be open yet). */
+  focusWhenShown(path: string, id: string) {
+    this.pendingFocus = { path, id };
+    this.sync(true);
+  }
+
+  takePendingFocus(path: string): string | null {
+    if (this.pendingFocus?.path !== path) return null;
+    const id = this.pendingFocus.id;
+    this.pendingFocus = null;
+    return id;
   }
 
   refreshFile(path: string) {

@@ -129,10 +129,13 @@ span.ann-s {
   padding: 0 !important;
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 .ann-margin {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  flex: 1;
+  min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
 }
@@ -337,3 +340,64 @@ span.ann-s {
 }
 
 .ann-margin:focus { outline: none; }
+
+/* ---- Unread comments ---- */
+.ann-badge-new {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-weight: var(--font-semibold, 600);
+}
+.ann-card.is-new {
+  box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+.ann-reply.is-new .ann-reply-text {
+  color: var(--text-normal);
+}
+/* Bar below the margin: unread comments in other notes. In the layout rather than floating, at the bottom since
+   Obsidian's notices cover the top of the right sidebar, lifted above the status bar (--ann-pill-clear, set
+   from JS). Wraps in a narrow sidebar. */
+.ann-inbox-pill {
+  flex: none;
+  margin: 4px 10px calc(8px + var(--ann-pill-clear, 0px));
+  padding: 5px 12px;
+  border-radius: var(--radius-l, 12px);
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-size: var(--font-ui-small, 13px);
+  line-height: 1.35;
+  text-align: center;
+  box-shadow: var(--shadow-s);
+  cursor: pointer;
+}
+.ann-notice-click {
+  cursor: pointer;
+}
+.ann-notice-body {
+  margin-top: 4px;
+  white-space: pre-line;
+}
+.ann-unread-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.ann-unread-note {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.ann-unread-head .ann-time {
+  margin-left: auto;
+  flex: none;
+}
+.ann-unread-text {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small, 13px);
+}
+.ann-unread-markall {
+  align-self: flex-end;
+  margin: 8px 12px 12px;
+}
